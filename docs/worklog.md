@@ -164,3 +164,12 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
   bar (boundary-margin gap removed).
   Verified on the tablet: open → page top right under the bar; heading at
   590 px stays at 590 on hide; after scrolling, 420 px stays at 420 on show.
+
+### Fix: could scroll past the top / bottom of the document (user report)
+- **Cause:** the `boundaryMargin` added for the floating-bar version still
+  allowed overscrolling by the bar heights.
+- **Fix:** removed it (pdfrx default `EdgeInsets.zero`); the bar-toggle shift is
+  clamped with `makeMatrixInSafeRange`, so at the very top/bottom the page
+  snaps to the edge instead of leaving a gap. Removed the open-time gap fix.
+- Verified: pull-down on a freshly opened doc doesn't move it; at the end of
+  the document the last page stops flush with the toolbar.

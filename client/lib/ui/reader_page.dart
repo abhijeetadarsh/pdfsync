@@ -64,12 +64,14 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _shiftContent(PdfViewerController c, double dy) {
     if (!c.isReady || dy == 0) return;
-    c.goTo(Matrix4.translationValues(0, dy, 0)..multiply(c.value), duration: Duration.zero);
+    // Clamped to the document: at the very top/bottom there is nothing to
+    // reveal, so the page snaps to the edge instead of leaving a gap.
+    c.goTo(c.makeMatrixInSafeRange(Matrix4.translationValues(0, dy, 0)..multiply(c.value)), duration: Duration.zero);
   }
 
-  // Heights covered by the floating bars, measured once while they are shown.
+  // Heights of the top and bottom bars, measured once while they are shown.
   // They must not follow MediaQuery afterwards: hiding the status bar changes
-  // the padding, and a changing boundaryMargin makes pdfrx re-clamp (jump).
+  // the padding, which would resize the viewer and make the page jump.
   double? _barTop;
   double? _barBottom;
 
@@ -326,9 +328,6 @@ class _ReaderPageState extends State<ReaderPage> {
                   sourceName: widget.doc.data['sha256'] as String,
                   controller: _controller,
                   params: PdfViewerParams(
-                    // The bars float over the page; let the first/last page be
-                    // scrolled out from under them.
-                    boundaryMargin: EdgeInsets.only(top: _barTop ?? 0, bottom: _barBottom ?? 0),
                     // Single tap with the hand tool toggles the bars. Double
                     // tap keeps pdfrx's zoom.
                     onGeneralTap: (context, controller, details) {
@@ -370,13 +369,6 @@ class _ReaderPageState extends State<ReaderPage> {
                       final p = _initialPage;
                       if (p != null && p > 1 && p <= document.pages.length) {
                         controller.goToPage(pageNumber: p);
-                      } else {
-                        // Start with the first page flush against the top bar
-                        // (no empty boundary-margin gap above it).
-                        Future.microtask(() {
-                          final top = controller.visibleRect.top;
-                          if (top < 0) _shiftContent(controller, top * controller.currentZoom);
-                        });
                       }
                     },
                     pageOverlaysBuilder: (context, pageRect, page) => [
