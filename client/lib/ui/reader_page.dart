@@ -51,7 +51,22 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_chrome == visible) return;
     setState(() => _chrome = visible);
     SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
+    // Move the page together with the top bar: down by the bar's height when
+    // it appears (so it never covers what you were reading), back up when it
+    // hides (so no gap is left behind).
+    final c = _controller;
+    final dy = _barTop;
+    if (c.isReady && dy != null) {
+      final m = Matrix4.translationValues(0, visible ? dy : -dy, 0)..multiply(c.value);
+      c.goTo(c.makeMatrixInSafeRange(m), duration: const Duration(milliseconds: 220));
+    }
   }
+
+  // Heights covered by the floating bars, measured once while they are shown.
+  // They must not follow MediaQuery afterwards: hiding the status bar changes
+  // the padding, and a changing boundaryMargin makes pdfrx re-clamp (jump).
+  double? _barTop;
+  double? _barBottom;
 
   /// Current zoom in percent (1.0 = 1 PDF point per logical pixel), rounded so
   /// the chip only rebuilds when the number it shows changes.
@@ -120,6 +135,8 @@ class _ReaderPageState extends State<ReaderPage> {
   void _onViewSizeChanged(Size viewSize, Size? oldViewSize, PdfViewerController controller) {
     if (oldViewSize == null || oldViewSize.width <= 0) return;
     if ((viewSize.width - oldViewSize.width).abs() < 1) return;
+    // Rotation: system bar sizes differ, re-measure on the next build.
+    if (_chrome) _barTop = _barBottom = null;
     final center = controller.value.calcPosition(oldViewSize);
     final zoom = (controller.currentZoom * viewSize.width / oldViewSize.width)
         .clamp(controller.minScale, controller.maxScale);
@@ -222,6 +239,12 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   Widget build(BuildContext context) {
     final drawing = _tool != Tool.pan;
+    if (_chrome) {
+      final pad = MediaQuery.paddingOf(context);
+      _barTop ??= pad.top + kToolbarHeight;
+      // Toolbar (48 + 2*4 padding) plus the page/zoom pill above it.
+      _barBottom ??= pad.bottom + 56 + 44;
+    }
     final appBar = AppBar(
         title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
         actions: [
@@ -294,7 +317,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   params: PdfViewerParams(
                     // The bars float over the page; let the first/last page be
                     // scrolled out from under them.
-                    boundaryMargin: EdgeInsets.only(top: _topInset(context), bottom: _bottomInset(context)),
+                    boundaryMargin: EdgeInsets.only(top: _barTop ?? 0, bottom: _barBottom ?? 0),
                     // Single tap with the hand tool toggles the bars. Double
                     // tap keeps pdfrx's zoom.
                     onGeneralTap: (context, controller, details) {
@@ -368,8 +391,8 @@ class _ReaderPageState extends State<ReaderPage> {
           Positioned.fill(
             child: _PageThumb(
               controller: _controller,
-              top: _chrome ? _topInset(context) + 8 : MediaQuery.paddingOf(context).top + 8,
-              bottom: _chrome ? _bottomInset(context) + 8 : MediaQuery.paddingOf(context).bottom + 8,
+              top: (_chrome ? _barTop ?? 0 : MediaQuery.paddingOf(context).top) + 8,
+              bottom: (_chrome ? _barBottom ?? 0 : MediaQuery.paddingOf(context).bottom) + 8,
             ),
           ),
         Positioned(
@@ -408,8 +431,7 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
-  double _topInset(BuildContext context) => MediaQuery.paddingOf(context).top + kToolbarHeight;
-  double _bottomInset(BuildContext context) => MediaQuery.paddingOf(context).bottom + 56 + 48;
+
 
   /// "3 / 12 · 86%": tap the page part to jump to a page, the zoom part for
   /// zoom presets.

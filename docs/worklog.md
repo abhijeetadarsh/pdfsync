@@ -139,3 +139,14 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
 - "Go to page" uses pdfrx `goToPage`, which re-fits the zoom (150% → fit).
 - Phone flips to landscape after each reinstall (ColorOS resets the rotation
   lock); test scripts must check orientation before tapping.
+
+### Fix: page jumped / got covered when toggling the bars (user report)
+- **Jump while hidden:** the viewer's `boundaryMargin` was derived from
+  `MediaQuery.padding`, which changes when the status bar hides; pdfrx then
+  re-clamped the position. Bar heights are now measured once (re-measured only
+  on rotation) and the margin stays constant.
+- **Bar covering the page when shown:** the page now moves with the top bar –
+  translated down by the bar height when it appears and back up when it hides
+  (220 ms, same as the bar animation).
+- Verified on the tablet with coordinates: hide → content −166 px (= bar),
+  scroll while hidden is smooth, show → content +166 px; nothing covered.
