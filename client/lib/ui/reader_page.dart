@@ -176,6 +176,10 @@ class _ReaderPageState extends State<ReaderPage> {
   Widget build(BuildContext context) {
     final drawing = _tool != Tool.pan;
     return Scaffold(
+      // The note dialog's keyboard must not shrink the viewer: a shorter view
+      // makes pdfrx re-fit the page (zoom out), then zoom back in when the
+      // keyboard closes. Dialogs move above the keyboard on their own.
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
         actions: [
