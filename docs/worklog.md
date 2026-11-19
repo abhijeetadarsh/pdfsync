@@ -214,7 +214,8 @@ measure **0 px**; only deliberate scrolls move the content.
 ### Page-number thumb: only while scrolling (user request)
 - `_PageThumb` is hidden at rest, fades in when the page actually moves
   (scroll, fling, zoom, or dragging the thumb) and fades out 1.2 s after
-  movement stops. While hidden it ignores pointers.
+  movement stops (shortened on request to 0.6 s + 0.2 s fade). While hidden it
+  ignores pointers.
 - Verified via right-edge brightness on screenshots: 74 at rest (hidden),
   202 during a scroll (visible), 61 2.5 s later (hidden).
 

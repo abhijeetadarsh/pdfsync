@@ -673,7 +673,7 @@ class _PageThumb extends StatefulWidget {
 
 class _PageThumbState extends State<_PageThumb> {
   static const _size = Size(46, 30);
-  static const _hideDelay = Duration(milliseconds: 1200);
+  static const _hideDelay = Duration(milliseconds: 600);
   bool _dragging = false;
 
   // Only shown while the page is moving (scroll, fling, zoom) or the thumb is
@@ -759,7 +759,7 @@ class _PageThumbState extends State<_PageThumb> {
             ignoring: !_visible,
             child: AnimatedOpacity(
               opacity: _visible ? 1 : 0,
-              duration: Duration(milliseconds: _visible ? 120 : 300),
+              duration: Duration(milliseconds: _visible ? 100 : 200),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onVerticalDragStart: (_) => setState(() {
