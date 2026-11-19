@@ -150,3 +150,8 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
   (220 ms, same as the bar animation).
 - Verified on the tablet with coordinates: hide → content −166 px (= bar),
   scroll while hidden is smooth, show → content +166 px; nothing covered.
+- **Revised per user:** the page must never move when toggling — the bars just
+  slide over / away and reveal what is underneath. Removed the page shift; kept
+  the fixed insets (which fixed the jump while scrolling with hidden bars).
+  Verified: heading at 533 px stays at 533 px on hide; after scrolling, stays
+  at 363 px on show.

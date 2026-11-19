@@ -51,15 +51,7 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_chrome == visible) return;
     setState(() => _chrome = visible);
     SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
-    // Move the page together with the top bar: down by the bar's height when
-    // it appears (so it never covers what you were reading), back up when it
-    // hides (so no gap is left behind).
-    final c = _controller;
-    final dy = _barTop;
-    if (c.isReady && dy != null) {
-      final m = Matrix4.translationValues(0, visible ? dy : -dy, 0)..multiply(c.value);
-      c.goTo(c.makeMatrixInSafeRange(m), duration: const Duration(milliseconds: 220));
-    }
+    // The page never moves: the bars only slide in over it / away from it.
   }
 
   // Heights covered by the floating bars, measured once while they are shown.
