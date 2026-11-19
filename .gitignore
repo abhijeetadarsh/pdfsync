@@ -1,0 +1,9 @@
+server/data/
+server/pdfsync-server
+*.db
+*.db-shm
+*.db-wal
+client/android/build/
+client/android/.gradle/
+client/android/.kotlin/
+client/android/local.properties
