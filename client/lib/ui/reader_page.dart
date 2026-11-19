@@ -51,22 +51,49 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_chrome == visible) return;
     setState(() => _chrome = visible);
     SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
-    // The viewer sits *between* the bars, so they never cover the page. On
-    // toggle its top edge moves by the bar height; shifting the content by the
-    // same amount inside the viewer keeps the page perfectly still on screen –
-    // hiding reveals more of the page above, showing tucks that strip away.
-    final h = _barTop;
-    if (h != null) _pendingShift = visible ? -h : h;
+    // The viewer itself never resizes (a resize makes pdfrx re-clamp and
+    // re-zoom with its own rules). Instead, the scroll limits in _normalize
+    // keep the page clear of the bars at the document's edges, in both states,
+    // so toggling the bars never moves the page.
   }
 
-  /// Content shift (screen px) to apply once the viewer has its new size.
-  double? _pendingShift;
+  /// Scroll limits (replaces pdfrx's default clamping). Page 1's top stops at
+  /// the top bar's bottom edge and the last page's bottom stops at the
+  /// toolbar's top edge – no overscroll, nothing tucked under a bar at the
+  /// document's edges, and identical whether the bars are shown or hidden.
+  /// Documents narrower/shorter than the view stay centred.
+  Matrix4 _normalize(Matrix4 m, Size view, PdfPageLayout layout, PdfViewerController? c) {
+    final z = (c != null && c.isReady) ? m.zoom.clamp(c.minScale, c.maxScale) : m.zoom;
+    final docW = layout.documentSize.width * z, docH = layout.documentSize.height * z;
+    var tx = m.storage[12] * (z / m.zoom), ty = m.storage[13] * (z / m.zoom);
+    final top = _barTop ?? 0, bottom = _barBottom ?? 0;
 
-  void _shiftContent(PdfViewerController c, double dy) {
-    if (!c.isReady || dy == 0) return;
-    // Clamped to the document: at the very top/bottom there is nothing to
-    // reveal, so the page snaps to the edge instead of leaving a gap.
-    c.goTo(c.makeMatrixInSafeRange(Matrix4.translationValues(0, dy, 0)..multiply(c.value)), duration: Duration.zero);
+    tx = docW <= view.width ? (view.width - docW) / 2 : tx.clamp(view.width - docW, 0.0);
+    final usable = view.height - top - bottom;
+    ty = docH <= usable ? top + (usable - docH) / 2 : ty.clamp(view.height - docH - bottom, top);
+
+    return Matrix4.identity()
+      ..setEntry(0, 0, z)
+      ..setEntry(1, 1, z)
+      ..setEntry(0, 3, tx)
+      ..setEntry(1, 3, ty);
+  }
+
+  /// Go to the top of a page, just below the top bar.
+  Future<void> _goToPage(int pageNumber) async {
+    final c = _controller;
+    if (!c.isReady) return;
+    // Computed directly: page top (document units) × zoom, offset by the bar.
+    final z = c.currentZoom;
+    // Include the gap pdfrx keeps around pages, so page 1 lands exactly on
+    // the scroll limit (nothing left to pull down).
+    final pageTop = c.layout.pageLayouts[pageNumber - 1].top - c.params.margin;
+    final m = Matrix4.identity()
+      ..setEntry(0, 0, z)
+      ..setEntry(1, 1, z)
+      ..setEntry(0, 3, c.value.storage[12])
+      ..setEntry(1, 3, -pageTop * z + (_barTop ?? 0));
+    await c.goTo(c.makeMatrixInSafeRange(m), duration: Duration.zero);
   }
 
   // Heights of the top and bottom bars, measured once while they are shown.
@@ -141,13 +168,7 @@ class _ReaderPageState extends State<ReaderPage> {
   /// width in portrait still fits it in landscape (and vice versa).
   void _onViewSizeChanged(Size viewSize, Size? oldViewSize, PdfViewerController controller) {
     if (oldViewSize == null || oldViewSize.width <= 0) return;
-    if ((viewSize.width - oldViewSize.width).abs() < 1) {
-      // Height-only change = bars toggled: keep the page still on screen.
-      final dy = _pendingShift;
-      _pendingShift = null;
-      if (dy != null) Future.microtask(() => _shiftContent(controller, dy));
-      return;
-    }
+    if ((viewSize.width - oldViewSize.width).abs() < 1) return;
     // Rotation: system bar sizes differ, re-measure on the next build.
     if (_chrome) _barTop = _barBottom = null;
     final center = controller.value.calcPosition(oldViewSize);
@@ -339,6 +360,7 @@ class _ReaderPageState extends State<ReaderPage> {
                     scaleEnabled: !drawing || _multiTouch,
                     onPageChanged: _onPageChanged,
                     onViewSizeChanged: _onViewSizeChanged,
+                    normalizeMatrix: _normalize,
                     pageImageColorFilter: _mode.colorFilter,
                     // The gutter around pages follows the app theme instead of
                     // pdfrx's default mid-grey.
@@ -367,9 +389,8 @@ class _ReaderPageState extends State<ReaderPage> {
                       controller.addListener(_onControllerChanged);
                       _onControllerChanged();
                       final p = _initialPage;
-                      if (p != null && p > 1 && p <= document.pages.length) {
-                        controller.goToPage(pageNumber: p);
-                      }
+                      Future.microtask(() =>
+                          _goToPage(p != null && p >= 1 && p <= document.pages.length ? p : 1));
                     },
                     pageOverlaysBuilder: (context, pageRect, page) => [
                       AnnotationLayer(
@@ -390,17 +411,11 @@ class _ReaderPageState extends State<ReaderPage> {
     const dur = Duration(milliseconds: 220);
     final ready = _bytes != null && _error == null;
     return Scaffold(
-      // The keyboard never resizes the viewer (the note dialog's keyboard made
-      // pdfrx re-fit the page). Only the bars do, see _setChrome.
+      // Nothing resizes the viewer – not the keyboard (the note dialog's
+      // keyboard made pdfrx re-fit the page) and not the bars.
       resizeToAvoidBottomInset: false,
       body: Stack(children: [
-        Positioned(
-          left: 0,
-          right: 0,
-          top: ready && _chrome ? _barTop ?? 0 : 0,
-          bottom: ready && _chrome ? _barBottom ?? 0 : 0,
-          child: ready ? body : SafeArea(child: body),
-        ),
+        Positioned.fill(child: ready ? body : SafeArea(child: body)),
         if (ready)
           // Draggable scrollbar thumb with the page number. It lives outside
           // the viewer so its track can stay between the floating bars.
@@ -513,7 +528,7 @@ class _ReaderPageState extends State<ReaderPage> {
       },
     );
     if (n == null) return;
-    await _controller.goToPage(pageNumber: n.clamp(1, total));
+    await _goToPage(n.clamp(1, total));
   }
 
   Widget _swatch(Color c, {double size = 28}) {

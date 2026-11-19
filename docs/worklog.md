@@ -173,3 +173,31 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
   snaps to the edge instead of leaving a gap. Removed the open-time gap fix.
 - Verified: pull-down on a freshly opened doc doesn't move it; at the end of
   the document the last page stops flush with the toolbar.
+
+### Bars toggle – final behaviour (after several rounds with the user)
+Requirement, in the user's words: *"when UI is hidden the margin should be
+there so that no slide, and when UI is there no margin (w.r.t. the bar) so that
+no slide also."* – i.e. toggling the bars must **never** move the page, page 1
+sits right under the top bar, the last page right on the toolbar, and you can't
+scroll past either edge.
+
+What did not work and why:
+1. Floating bars + `boundaryMargin` → overscroll past the edges, page start
+   hidden under the bar.
+2. Viewer laid out *between* the bars, resized on toggle, content shifted to
+   compensate → pdfrx's size delegate (`PdfViewerSizeDelegateLegacy.
+   onLayoutUpdate`) re-clamps with its **own** rules (and may change zoom when
+   the zoom equals the old fit scale) on every view-size change, so the page
+   jumped by one or both bar heights at the edges.
+
+Final design:
+- The viewer is always full screen and **never resizes** (no pdfrx re-clamp).
+- `normalizeMatrix: _normalize` replaces pdfrx's clamping: content may scroll
+  between `ty ≤ barTop` and `ty ≥ viewH − docH − barBottom` (constant bar
+  heights, measured once), narrow/short docs centred.
+- `_goToPage` (open + "Go to page") computes the matrix directly
+  (`pageTop − margin` × zoom + barTop); pdfrx's `calcMatrixForPage` mixes units.
+
+Verified with `scripts/measure-shift.py` (row-profile alignment between
+screenshots): hide / show / pull at top / push at bottom / hide+show mid-doc all
+measure **0 px**; only deliberate scrolls move the content.
