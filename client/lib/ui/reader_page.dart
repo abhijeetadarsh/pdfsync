@@ -41,6 +41,7 @@ class _ReaderPageState extends State<ReaderPage> {
   bool get _multiTouch => _touches.length > 1;
   PdfDocument? _document;
   final _controller = PdfViewerController();
+  bool _positioned = false; // initial page placed (see onViewerReady)
 
   // Immersive reading: a single tap with the hand tool hides the app bar,
   // toolbar and system bars; another tap brings them back. The bars float over
@@ -389,8 +390,15 @@ class _ReaderPageState extends State<ReaderPage> {
                       controller.addListener(_onControllerChanged);
                       _onControllerChanged();
                       final p = _initialPage;
-                      Future.microtask(() =>
-                          _goToPage(p != null && p >= 1 && p <= document.pages.length ? p : 1));
+                      // pdfrx runs its own initial page jump after this
+                      // callback (placing the page under the top bar). Position
+                      // once that has settled, keeping the page invisible
+                      // until then so it never visibly jumps.
+                      Future.delayed(const Duration(milliseconds: 150), () async {
+                        if (!mounted) return;
+                        await _goToPage(p != null && p >= 1 && p <= document.pages.length ? p : 1);
+                        if (mounted) setState(() => _positioned = true);
+                      });
                     },
                     pageOverlaysBuilder: (context, pageRect, page) => [
                       AnnotationLayer(
@@ -415,7 +423,9 @@ class _ReaderPageState extends State<ReaderPage> {
       // keyboard made pdfrx re-fit the page) and not the bars.
       resizeToAvoidBottomInset: false,
       body: Stack(children: [
-        Positioned.fill(child: ready ? body : SafeArea(child: body)),
+        Positioned.fill(
+          child: ready ? Opacity(opacity: _positioned ? 1 : 0, child: body) : SafeArea(child: body),
+        ),
         if (ready)
           // Draggable scrollbar thumb with the page number. It lives outside
           // the viewer so its track can stay between the floating bars.

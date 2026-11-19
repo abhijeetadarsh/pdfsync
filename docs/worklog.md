@@ -201,3 +201,12 @@ Final design:
 Verified with `scripts/measure-shift.py` (row-profile alignment between
 screenshots): hide / show / pull at top / push at bottom / hide+show mid-doc all
 measure **0 px**; only deliberate scrolls move the content.
+
+### Fix: page top under the bar right after opening (user report)
+- **Cause:** pdfrx runs its own initial page jump (size delegate +
+  `_goToPage`) *after* `onViewerReady`, overwriting our placement, so the page
+  opened at `ty = 0` (behind the top bar). Measured: pull-down after open moved
+  the page +202 px.
+- **Fix:** place the initial page 150 ms after `onViewerReady` (after pdfrx's
+  jump has settled) and keep the viewer at opacity 0 until then, so there is no
+  visible jump. Verified: pull-down after open = 0 px for both test PDFs.
