@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 import '../annotations.dart';
 
@@ -176,26 +177,40 @@ class _AnnotationLayerState extends State<AnnotationLayer> {
               Positioned(
                 left: a.pos.dx * size.width - 14,
                 top: a.pos.dy * size.height - 14,
-                child: GestureDetector(
-                  onTap: () => widget.onNoteTap(a),
-                  child: Tooltip(
-                    message: a.text,
-                    child: Icon(Icons.sticky_note_2, size: 28, color: a.color),
-                  ),
+                // Page overlays sit *above* the viewer in pdfrx, so a normal
+                // GestureDetector here would swallow pans/pinches that start on
+                // the icon. The interaction region reports taps without being
+                // a hit-test target.
+                child: PdfOverlayInteractionRegion(
+                  // With the note tool active, the tool's own tap handling
+                  // opens existing notes; don't open them twice.
+                  onTap: widget.tool == Tool.note
+                      ? null
+                      : (_) {
+                          widget.onNoteTap(a);
+                          return true;
+                        },
+                  child: Icon(Icons.sticky_note_2, size: 28, color: a.color),
                 ),
               ),
           ]);
-          if (widget.tool == Tool.pan) return layer;
-          // Listener sees raw pointers (no gesture-arena fight with the viewer).
-          // The reader enables the viewer's pan/zoom only while 2+ fingers are
-          // down, so one finger draws and two fingers navigate.
+          // pdfrx stacks page overlays on top of the viewer (they are not its
+          // children), so anything here that is a hit-test target blocks
+          // panning and zooming. The painted annotations therefore never take
+          // pointers.
+          final passive = IgnorePointer(child: layer);
+          if (widget.tool == Tool.pan) return passive;
+          // Drawing tools: a *translucent* Listener sees the raw pointers but
+          // still lets them through to the viewer underneath. The reader keeps
+          // the viewer's pan/zoom disabled for one finger and enables it while
+          // 2+ fingers are down, so one finger draws and two fingers navigate.
           return Listener(
-            behavior: HitTestBehavior.opaque,
+            behavior: HitTestBehavior.translucent,
             onPointerDown: _onDown,
             onPointerMove: _onMove,
             onPointerUp: _onUp,
             onPointerCancel: _onUp,
-            child: layer,
+            child: passive,
           );
         },
       );
