@@ -10,6 +10,7 @@
   "Continue installation") and test entirely via `adb` (input tap/swipe/text,
   screencap). See `docs/android-testing.md`.
 - Test UI changes on both the phone and the tablet, in portrait and landscape.
+- Install with `scripts/install-android.sh` (handles the phone's install prompt).
 
 ## Layout
 - `server/` – Go sync server (SQLite). `go test ./...`

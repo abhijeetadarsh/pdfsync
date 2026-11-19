@@ -7,7 +7,10 @@ import 'package:pdfrx/pdfrx.dart';
 import '../annotations.dart';
 import '../sync/record.dart';
 import '../sync/sync_engine.dart';
+import '../undo.dart';
 import 'annotation_layer.dart';
+import 'reading_mode.dart';
+import 'text_highlight.dart';
 
 class ReaderPage extends StatefulWidget {
   const ReaderPage({super.key, required this.engine, required this.doc});
@@ -36,6 +39,34 @@ class _ReaderPageState extends State<ReaderPage> {
   // only pans/zooms when 2+ fingers are down; one finger draws.
   final Set<int> _touches = {};
   bool get _multiTouch => _touches.length > 1;
+  PdfDocument? _document;
+  ReadingMode _mode = ReadingMode.original;
+
+  // Reading mode is a per-device preference (a phone at night and a desktop
+  // by day want different things), kept in the local store's meta table.
+  Future<void> _setMode(ReadingMode m) async {
+    setState(() => _mode = m);
+    await widget.engine.store.setMeta('readingMode', m.name);
+  }
+  late final AnnotationHistory _history = AnnotationHistory((id, data) => data == null
+      ? widget.engine.store.delete('annotation', id, docId: _docId)
+      : widget.engine.store.put('annotation', id, data, docId: _docId));
+
+  // All annotation edits go through the undo history.
+  Future<void> _create(Map<String, dynamic> data) => _history.run(AnnEdit(newId(), null, data));
+  Future<void> _remove(Ann a) => _history.run(AnnEdit(a.id, Map.of(a.d), null));
+  Future<void> _update(Ann a, Map<String, dynamic> data) => _history.run(AnnEdit(a.id, Map.of(a.d), data));
+
+  /// Context-menu action for a text selection: highlight it in the current colour.
+  Future<void> _highlightSelection(PdfTextSelectionDelegate sel) async {
+    final doc = _document;
+    if (doc == null || !sel.hasSelectedText) return;
+    final ranges = await sel.getSelectedTextRanges();
+    for (final data in highlightsFromSelection(ranges, doc.pages, color: _color.toARGB32())) {
+      await _create(data);
+    }
+    await sel.clearTextSelection();
+  }
 
   void _touch(int pointer, bool down) {
     final before = _multiTouch;
@@ -82,6 +113,7 @@ class _ReaderPageState extends State<ReaderPage> {
     try {
       final rs = await widget.engine.store.get('readstate', _docId);
       _initialPage = rs?.data['page'] as int?;
+      _mode = ReadingMode.byName(await widget.engine.store.getMeta<String>('readingMode'));
       final bytes = await widget.engine.loadPdf(widget.doc.data['sha256'] as String,
           onProgress: (p) => mounted ? setState(() => _progress = p) : null);
       if (mounted) setState(() => _bytes = bytes);
@@ -95,6 +127,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _sub?.cancel();
     _pageSave?.cancel();
     _anns.dispose();
+    _history.dispose();
     super.dispose();
   }
 
@@ -124,19 +157,18 @@ class _ReaderPageState extends State<ReaderPage> {
       ),
     );
     if (result == null) return;
-    final store = widget.engine.store;
     if (result == '\u0000delete') {
-      await store.delete('annotation', existing!.id, docId: _docId);
+      await _remove(existing!);
     } else if (existing != null) {
-      await store.put('annotation', existing.id, {...existing.d, 'text': result}, docId: _docId);
+      if (result != existing.text) await _update(existing, {...existing.d, 'text': result});
     } else if (result.trim().isNotEmpty) {
-      await store.put('annotation', newId(), {
+      await _create({
         'page': page,
         'type': 'note',
         'color': _color.toARGB32(),
         'pos': [q(pos!.dx), q(pos.dy)],
         'text': result,
-      }, docId: _docId);
+      });
     }
   }
 
@@ -147,6 +179,51 @@ class _ReaderPageState extends State<ReaderPage> {
       appBar: AppBar(
         title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
         actions: [
+          // Undo/redo live in the app bar: the bottom toolbar is already full
+          // on a phone in portrait.
+          ListenableBuilder(
+            listenable: _history,
+            builder: (context, _) => Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                tooltip: 'Undo',
+                icon: const Icon(Icons.undo),
+                onPressed: _history.canUndo ? _history.undo : null,
+              ),
+              IconButton(
+                tooltip: 'Redo',
+                icon: const Icon(Icons.redo),
+                onPressed: _history.canRedo ? _history.redo : null,
+              ),
+            ]),
+          ),
+          PopupMenuButton<ReadingMode>(
+            tooltip: 'Reading mode',
+            icon: const Icon(Icons.contrast),
+            initialValue: _mode,
+            onSelected: _setMode,
+            itemBuilder: (_) => [
+              for (final m in ReadingMode.values)
+                PopupMenuItem(
+                  value: m,
+                  child: Row(children: [
+                    Container(
+                      width: 36,
+                      height: 26,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: m.paperColor,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      ),
+                      child: Text('Aa', style: TextStyle(color: m.inkColor, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(m.label),
+                    if (m == _mode) ...[const Spacer(), const Icon(Icons.check, size: 18)],
+                  ]),
+                ),
+            ],
+          ),
           SyncIndicator(engine: widget.engine),
           const SizedBox(width: 8),
         ],
@@ -172,7 +249,31 @@ class _ReaderPageState extends State<ReaderPage> {
                     scaleEnabled: !drawing || _multiTouch,
                     onPageChanged: _onPageChanged,
                     onViewSizeChanged: _onViewSizeChanged,
+                    pageImageColorFilter: _mode.colorFilter,
+                    // The gutter around pages follows the app theme instead of
+                    // pdfrx's default mid-grey.
+                    backgroundColor: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF26262B)
+                        : const Color(0xFFDADADF),
+                    // Long-press (touch) or drag (mouse) selects text with the
+                    // hand tool; the menu gets a "Highlight" action next to
+                    // Copy. Off while drawing so a pen stroke never selects.
+                    textSelectionParams: PdfTextSelectionParams(enabled: !drawing),
+                    customizeContextMenuItems: (params, items) {
+                      if (!params.textSelectionDelegate.hasSelectedText) return;
+                      items.insert(
+                        0,
+                        ContextMenuButtonItem(
+                          label: 'Highlight',
+                          onPressed: () {
+                            params.dismissContextMenu();
+                            _highlightSelection(params.textSelectionDelegate);
+                          },
+                        ),
+                      );
+                    },
                     onViewerReady: (document, controller) {
+                      _document = document;
                       final p = _initialPage;
                       if (p != null && p > 1 && p <= document.pages.length) {
                         controller.goToPage(pageNumber: p);
@@ -185,9 +286,8 @@ class _ReaderPageState extends State<ReaderPage> {
                         annotations: _anns,
                         tool: _tool,
                         color: _color,
-                        onCreate: (data) =>
-                            widget.engine.store.put('annotation', newId(), data, docId: _docId),
-                        onDelete: (a) => widget.engine.store.delete('annotation', a.id, docId: _docId),
+                        onCreate: _create,
+                        onDelete: _remove,
                         onNoteTap: (a) => _noteDialog(existing: a, page: a.page),
                         onNewNote: (pos) => _noteDialog(pos: pos, page: page.pageNumber),
                       ),

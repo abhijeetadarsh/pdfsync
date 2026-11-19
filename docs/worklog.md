@@ -55,3 +55,54 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
 
 ### Still open / not verifiable via adb
 - Two-finger pan/zoom while a tool is active (adb `input` is single-touch only).
+
+## 2026-11-20 (cont.) – Pan/zoom fix, text selection, undo/redo, reading modes
+
+### Pan & zoom didn't work at all (user report)
+- **Cause:** pdfrx 2.12 stacks `pageOverlaysBuilder` widgets *above* the viewer
+  (they are not its children). Our full-page annotation layer was a hit-test
+  target, so it swallowed every touch – no scrolling or pinch zoom even with the
+  hand tool.
+- **Fix:** painted annotations are wrapped in `IgnorePointer`; note icons use
+  `PdfOverlayInteractionRegion` (taps without blocking the viewer); drawing
+  tools use a *translucent* `Listener`, so the viewer still receives pointers
+  and its pan/zoom is enabled only while 2+ fingers are down.
+- Verified: single-finger scroll works on the phone. Pinch zoom needs a manual
+  check (adb is single-touch).
+
+### Text selection → highlight (new)
+- pdfrx's built-in selection is enabled with the hand tool (long-press, drag
+  handles). The context menu gets **Highlight** next to Copy / Select all.
+- `lib/ui/text_highlight.dart` converts the selected characters to normalized
+  page rects and merges them per line; the selected text is stored with the
+  highlight (`text`, capped at 1000 chars).
+- Bug found while testing: `PdfRect.toRect(scaledPageSize: Size(1,1))` scales
+  both axes by the page *height*, which squashed x on non-square pages. Now
+  converted to points and normalized per axis.
+- Disabled while a drawing tool is active, so a pen stroke never selects text.
+
+### Undo / redo (new)
+- `lib/undo.dart` (`AnnotationHistory`): every annotation create/update/delete
+  goes through it; undo/redo are ordinary synced writes, so they reach other
+  devices. Restoring a deleted annotation reuses its id; the newer HLC wins over
+  the tombstone on the server.
+- Buttons in the reader's app bar (bottom toolbar is full on phones).
+- Unit test: `test/undo_test.dart`.
+
+### Reading modes (new)
+- App-bar picker: Original, Paper, Sepia, Green, Dim, Night
+  (`lib/ui/reading_mode.dart`). Applied with `pageImageColorFilter`, so only the
+  PDF page is tinted – annotations keep their real colours.
+- Night = hue-rotate 180° + invert, so links stay blue instead of turning yellow.
+- Per-device preference (local store meta `readingMode`).
+- Viewer gutter now follows the app theme instead of pdfrx's mid-grey.
+
+### Tooling
+- `scripts/install-android.sh` installs on every connected device and taps the
+  ColorOS "Continue installation" prompt via uiautomator.
+
+### Verified on devices
+- Tablet portrait: text select → Highlight lines up with the text; undo removes
+  it, redo restores it; synced to the phone.
+- Sepia and Night on the white résumé PDF; mode persists after reopening.
+- Phone portrait: app bar with undo/redo/mode/sync fits (title truncates).
