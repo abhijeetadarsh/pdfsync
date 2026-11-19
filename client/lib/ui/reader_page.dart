@@ -23,7 +23,11 @@ class ReaderPage extends StatefulWidget {
 
 class _ReaderPageState extends State<ReaderPage> {
   static const palette = [
-    Color(0xFFFFEB3B), Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFE91E63), Color(0xFF212121),
+    Color(0xFFFFEB3B),
+    Color(0xFF4CAF50),
+    Color(0xFF2196F3),
+    Color(0xFFE91E63),
+    Color(0xFF212121),
   ];
 
   Uint8List? _bytes;
@@ -130,6 +134,7 @@ class _ReaderPageState extends State<ReaderPage> {
       await c.setZoom(c.centerPosition, (z.percent! / 100).clamp(c.minScale, c.maxScale));
     }
   }
+
   ReadingMode _mode = ReadingMode.original;
 
   // Reading mode is a per-device preference (a phone at night and a desktop
@@ -138,6 +143,7 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() => _mode = m);
     await widget.engine.store.setMeta('readingMode', m.name);
   }
+
   late final AnnotationHistory _history = AnnotationHistory((id, data) => data == null
       ? widget.engine.store.delete('annotation', id, docId: _docId)
       : widget.engine.store.put('annotation', id, data, docId: _docId));
@@ -173,8 +179,8 @@ class _ReaderPageState extends State<ReaderPage> {
     // Rotation: system bar sizes differ, re-measure on the next build.
     if (_chrome) _barTop = _barBottom = null;
     final center = controller.value.calcPosition(oldViewSize);
-    final zoom = (controller.currentZoom * viewSize.width / oldViewSize.width)
-        .clamp(controller.minScale, controller.maxScale);
+    final zoom =
+        (controller.currentZoom * viewSize.width / oldViewSize.width).clamp(controller.minScale, controller.maxScale);
     // Not synchronously: this can be called during build.
     Future.delayed(const Duration(milliseconds: 50), () {
       if (!mounted || !controller.isReady) return;
@@ -281,71 +287,71 @@ class _ReaderPageState extends State<ReaderPage> {
       _barBottom ??= pad.bottom + 56 + 44;
     }
     final appBar = AppBar(
-        title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
-        actions: [
-          // Undo/redo live in the app bar: the bottom toolbar is already full
-          // on a phone in portrait.
-          ListenableBuilder(
-            listenable: _history,
-            builder: (context, _) => Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(
-                tooltip: 'Undo',
-                icon: const Icon(Icons.undo),
-                onPressed: _history.canUndo ? _history.undo : null,
-              ),
-              IconButton(
-                tooltip: 'Redo',
-                icon: const Icon(Icons.redo),
-                onPressed: _history.canRedo ? _history.redo : null,
-              ),
-            ]),
-          ),
-          PopupMenuButton<ReadingMode>(
-            tooltip: 'Reading mode',
-            icon: const Icon(Icons.contrast),
-            initialValue: _mode,
-            onSelected: _setMode,
-            itemBuilder: (_) => [
-              for (final m in ReadingMode.values)
-                PopupMenuItem(
-                  value: m,
-                  child: Row(children: [
-                    Container(
-                      width: 36,
-                      height: 26,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: m.paperColor,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Theme.of(context).colorScheme.outline),
-                      ),
-                      child: Text('Aa', style: TextStyle(color: m.inkColor, fontWeight: FontWeight.w600)),
+      title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
+      actions: [
+        // Undo/redo live in the app bar: the bottom toolbar is already full
+        // on a phone in portrait.
+        ListenableBuilder(
+          listenable: _history,
+          builder: (context, _) => Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              tooltip: 'Undo',
+              icon: const Icon(Icons.undo),
+              onPressed: _history.canUndo ? _history.undo : null,
+            ),
+            IconButton(
+              tooltip: 'Redo',
+              icon: const Icon(Icons.redo),
+              onPressed: _history.canRedo ? _history.redo : null,
+            ),
+          ]),
+        ),
+        PopupMenuButton<ReadingMode>(
+          tooltip: 'Reading mode',
+          icon: const Icon(Icons.contrast),
+          initialValue: _mode,
+          onSelected: _setMode,
+          itemBuilder: (_) => [
+            for (final m in ReadingMode.values)
+              PopupMenuItem(
+                value: m,
+                child: Row(children: [
+                  Container(
+                    width: 36,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: m.paperColor,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
-                    const SizedBox(width: 12),
-                    Text(m.label),
-                    if (m == _mode) ...[const Spacer(), const Icon(Icons.check, size: 18)],
-                  ]),
-                ),
-            ],
-          ),
-          SyncIndicator(engine: widget.engine),
-          const SizedBox(width: 8),
-        ],
-      );
+                    child: Text('Aa', style: TextStyle(color: m.inkColor, fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(m.label),
+                  if (m == _mode) ...[const Spacer(), const Icon(Icons.check, size: 18)],
+                ]),
+              ),
+          ],
+        ),
+        SyncIndicator(engine: widget.engine),
+        const SizedBox(width: 8),
+      ],
+    );
     final body = _error != null
-          ? Center(child: Text('Could not open PDF:\n$_error', textAlign: TextAlign.center))
-          : _bytes == null
-              ? Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(width: 200, child: LinearProgressIndicator(value: _progress > 0 ? _progress : null)),
-                  const SizedBox(height: 12),
-                  const Text('Downloading…'),
-                ]))
-              : Listener(
-                  onPointerDown: (e) => _touch(e.pointer, true),
-                  onPointerUp: (e) => _touch(e.pointer, false),
-                  onPointerCancel: (e) => _touch(e.pointer, false),
-                  child: PdfViewer.data(
+        ? Center(child: Text('Could not open PDF:\n$_error', textAlign: TextAlign.center))
+        : _bytes == null
+            ? Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                SizedBox(width: 200, child: LinearProgressIndicator(value: _progress > 0 ? _progress : null)),
+                const SizedBox(height: 12),
+                const Text('Downloading…'),
+              ]))
+            : Listener(
+                onPointerDown: (e) => _touch(e.pointer, true),
+                onPointerUp: (e) => _touch(e.pointer, false),
+                onPointerCancel: (e) => _touch(e.pointer, false),
+                child: PdfViewer.data(
                   _bytes!,
                   sourceName: widget.doc.data['sha256'] as String,
                   controller: _controller,
@@ -362,6 +368,10 @@ class _ReaderPageState extends State<ReaderPage> {
                     onPageChanged: _onPageChanged,
                     onViewSizeChanged: _onViewSizeChanged,
                     normalizeMatrix: _normalize,
+                    // Pinch zoom felt too twitchy at the default 1.0: zoom
+                    // follows (finger spread ratio)^0.6, so spreading the
+                    // fingers to twice the distance zooms ~1.5x, not 2x.
+                    scaleGestureSensitivity: 0.6,
                     pageImageColorFilter: _mode.colorFilter,
                     // The gutter around pages follows the app theme instead of
                     // pdfrx's default mid-grey.
@@ -471,8 +481,6 @@ class _ReaderPageState extends State<ReaderPage> {
       ]),
     );
   }
-
-
 
   /// "3 / 12 · 86%": tap the page part to jump to a page, the zoom part for
   /// zoom presets.
@@ -665,7 +673,21 @@ class _PageThumb extends StatefulWidget {
 
 class _PageThumbState extends State<_PageThumb> {
   static const _size = Size(46, 30);
+  static const _hideDelay = Duration(milliseconds: 1200);
   bool _dragging = false;
+
+  // Only shown while the page is moving (scroll, fling, zoom) or the thumb is
+  // being dragged; fades out shortly after movement stops.
+  bool _visible = false;
+  Timer? _hideTimer;
+  Matrix4? _lastMatrix;
+
+  void _scheduleHide() {
+    _hideTimer?.cancel();
+    _hideTimer = Timer(_hideDelay, () {
+      if (mounted && !_dragging) setState(() => _visible = false);
+    });
+  }
 
   @override
   void initState() {
@@ -675,12 +697,22 @@ class _PageThumbState extends State<_PageThumb> {
 
   @override
   void dispose() {
+    _hideTimer?.cancel();
     widget.controller.removeListener(_changed);
     super.dispose();
   }
 
   void _changed() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final c = widget.controller;
+    // Ignore notifications that don't actually move the page.
+    final m = c.isReady ? c.value : null;
+    final moved = m != null && _lastMatrix != null && m != _lastMatrix;
+    _lastMatrix = m?.clone();
+    setState(() {
+      if (moved) _visible = true;
+    });
+    if (moved) _scheduleHide();
   }
 
   /// Scroll fraction 0..1 of the current view, and the range it maps to (in
@@ -722,27 +754,42 @@ class _PageThumbState extends State<_PageThumb> {
           top: y,
           width: _size.width,
           height: _size.height,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onVerticalDragStart: (_) => setState(() => _dragging = true),
-            onVerticalDragUpdate: (d) {
-              final local = (context.findRenderObject() as RenderBox).globalToLocal(d.globalPosition);
-              _dragTo(local.dy, track);
-            },
-            onVerticalDragEnd: (_) => setState(() => _dragging = false),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              decoration: BoxDecoration(
-                color: (_dragging ? scheme.primary : scheme.inverseSurface).withValues(alpha: 0.85),
-                borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
+          child: IgnorePointer(
+            // Hidden thumb must not swallow taps meant for the page.
+            ignoring: !_visible,
+            child: AnimatedOpacity(
+              opacity: _visible ? 1 : 0,
+              duration: Duration(milliseconds: _visible ? 120 : 300),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragStart: (_) => setState(() {
+                  _dragging = true;
+                  _visible = true;
+                  _hideTimer?.cancel();
+                }),
+                onVerticalDragUpdate: (d) {
+                  final local = (context.findRenderObject() as RenderBox).globalToLocal(d.globalPosition);
+                  _dragTo(local.dy, track);
+                },
+                onVerticalDragEnd: (_) {
+                  setState(() => _dragging = false);
+                  _scheduleHide();
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: BoxDecoration(
+                    color: (_dragging ? scheme.primary : scheme.inverseSurface).withValues(alpha: 0.85),
+                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text('${widget.controller.pageNumber ?? ''}',
+                      style: TextStyle(
+                        color: _dragging ? scheme.onPrimary : scheme.onInverseSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      )),
+                ),
               ),
-              alignment: Alignment.center,
-              child: Text('${widget.controller.pageNumber ?? ''}',
-                  style: TextStyle(
-                    color: _dragging ? scheme.onPrimary : scheme.onInverseSurface,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  )),
             ),
           ),
         ),

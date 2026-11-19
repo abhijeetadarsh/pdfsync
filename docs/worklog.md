@@ -210,3 +210,14 @@ measure **0 px**; only deliberate scrolls move the content.
 - **Fix:** place the initial page 150 ms after `onViewerReady` (after pdfrx's
   jump has settled) and keep the viewer at opacity 0 until then, so there is no
   visible jump. Verified: pull-down after open = 0 px for both test PDFs.
+
+### Page-number thumb: only while scrolling (user request)
+- `_PageThumb` is hidden at rest, fades in when the page actually moves
+  (scroll, fling, zoom, or dragging the thumb) and fades out 1.2 s after
+  movement stops. While hidden it ignores pointers.
+- Verified via right-edge brightness on screenshots: 74 at rest (hidden),
+  202 during a scroll (visible), 61 2.5 s later (hidden).
+
+### Pinch-zoom sensitivity (user report: too high)
+- `scaleGestureSensitivity: 0.6` (pdfrx default 1.0): zoom follows
+  (pinch ratio)^0.6. Needs a hand check – adb cannot pinch.
