@@ -106,3 +106,36 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
   it, redo restores it; synced to the phone.
 - Sepia and Night on the white résumé PDF; mode persists after reopening.
 - Phone portrait: app bar with undo/redo/mode/sync fits (title truncates).
+
+## 2026-11-20 (cont.) – Home page, immersive reading, zoom presets, page navigation
+
+### Note dialog zoom jump (user report)
+- **Cause:** the keyboard shrank the reader's Scaffold body → pdfrx re-fit the
+  page to the shorter view, then zoomed back when the keyboard closed.
+- **Fix:** `resizeToAvoidBottomInset: false` in the reader. Verified on the
+  tablet: page stays put while the dialog + keyboard are open.
+
+### Home page (new design, deliberately minimal)
+- Grid of cover thumbnails (top of page 1, rendered once at 360 px with
+  `renderForDisplay` and cached; very tall pages no longer become slivers).
+  Documents not yet downloaded on this device show a cloud placeholder instead
+  of downloading just for a thumbnail.
+- Recently read first (readstate HLC), thin progress line + "Page n of N".
+- Rename / delete behind a long-press bottom sheet (delete now asks first).
+- Search icon in the app bar, account avatar menu (email, sign out).
+- Opening a document refreshes its readstate so it moves to the front.
+
+### Reader
+- **Tap to hide UI:** single tap (hand tool) slides away app bar, toolbar and
+  system bars (immersive sticky); tap again to bring them back. Bars float over
+  the viewer so toggling never resizes/re-zooms it. Double-tap stays pdfrx zoom.
+- **Page/zoom pill** above the toolbar: "3 / 12 | 86%". Tap the page part →
+  "Go to page" dialog; tap the zoom part → Fit width, Fit page, 50–300%.
+- **Scrollbar thumb** on the right edge shows the page number and can be
+  dragged. Custom widget (`_PageThumb`) because pdfrx's thumb uses the full
+  view height and would sit under the floating bars.
+
+### Known / open
+- "Go to page" uses pdfrx `goToPage`, which re-fits the zoom (150% → fit).
+- Phone flips to landscape after each reinstall (ColorOS resets the rotation
+  lock); test scripts must check orientation before tapping.

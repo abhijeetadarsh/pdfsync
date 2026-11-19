@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -40,6 +40,46 @@ class _ReaderPageState extends State<ReaderPage> {
   final Set<int> _touches = {};
   bool get _multiTouch => _touches.length > 1;
   PdfDocument? _document;
+  final _controller = PdfViewerController();
+
+  // Immersive reading: a single tap with the hand tool hides the app bar,
+  // toolbar and system bars; another tap brings them back. The bars float over
+  // the page (they never resize the viewer), so toggling never re-zooms.
+  bool _chrome = true;
+
+  void _setChrome(bool visible) {
+    if (_chrome == visible) return;
+    setState(() => _chrome = visible);
+    SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
+  }
+
+  /// Current zoom in percent (1.0 = 1 PDF point per logical pixel), rounded so
+  /// the chip only rebuilds when the number it shows changes.
+  final _zoomPct = ValueNotifier<int>(100);
+  final _page = ValueNotifier<int>(1);
+  void _onControllerChanged() {
+    final c = _controller;
+    if (c.isReady) {
+      _zoomPct.value = (c.currentZoom * 100).round();
+      _page.value = c.pageNumber ?? _page.value;
+    }
+  }
+
+  Future<void> _applyZoom(_ZoomPreset z) async {
+    final c = _controller;
+    if (!c.isReady) return;
+    final page = c.pageNumber ?? 1;
+    final Matrix4? m = switch (z.kind) {
+      _ZoomKind.fitWidth => c.calcMatrixFitWidthForPage(pageNumber: page),
+      _ZoomKind.fitPage => c.calcMatrixForFit(pageNumber: page),
+      _ZoomKind.percent => null,
+    };
+    if (m != null) {
+      await c.goTo(m);
+    } else {
+      await c.setZoom(c.centerPosition, (z.percent! / 100).clamp(c.minScale, c.maxScale));
+    }
+  }
   ReadingMode _mode = ReadingMode.original;
 
   // Reading mode is a per-device preference (a phone at night and a desktop
@@ -113,6 +153,9 @@ class _ReaderPageState extends State<ReaderPage> {
     try {
       final rs = await widget.engine.store.get('readstate', _docId);
       _initialPage = rs?.data['page'] as int?;
+      // Opening counts as reading: refresh the readstate so the library sorts
+      // this document first on every device.
+      widget.engine.store.put('readstate', _docId, {'page': _initialPage ?? 1}, docId: _docId);
       _mode = ReadingMode.byName(await widget.engine.store.getMeta<String>('readingMode'));
       final bytes = await widget.engine.loadPdf(widget.doc.data['sha256'] as String,
           onProgress: (p) => mounted ? setState(() => _progress = p) : null);
@@ -128,6 +171,10 @@ class _ReaderPageState extends State<ReaderPage> {
     _pageSave?.cancel();
     _anns.dispose();
     _history.dispose();
+    _controller.removeListener(_onControllerChanged);
+    _zoomPct.dispose();
+    _page.dispose();
+    if (!_chrome) SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -175,12 +222,7 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   Widget build(BuildContext context) {
     final drawing = _tool != Tool.pan;
-    return Scaffold(
-      // The note dialog's keyboard must not shrink the viewer: a shorter view
-      // makes pdfrx re-fit the page (zoom out), then zoom back in when the
-      // keyboard closes. Dialogs move above the keyboard on their own.
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(
+    final appBar = AppBar(
         title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
         actions: [
           // Undo/redo live in the app bar: the bottom toolbar is already full
@@ -231,8 +273,8 @@ class _ReaderPageState extends State<ReaderPage> {
           SyncIndicator(engine: widget.engine),
           const SizedBox(width: 8),
         ],
-      ),
-      body: _error != null
+      );
+    final body = _error != null
           ? Center(child: Text('Could not open PDF:\n$_error', textAlign: TextAlign.center))
           : _bytes == null
               ? Center(
@@ -248,7 +290,18 @@ class _ReaderPageState extends State<ReaderPage> {
                   child: PdfViewer.data(
                   _bytes!,
                   sourceName: widget.doc.data['sha256'] as String,
+                  controller: _controller,
                   params: PdfViewerParams(
+                    // The bars float over the page; let the first/last page be
+                    // scrolled out from under them.
+                    boundaryMargin: EdgeInsets.only(top: _topInset(context), bottom: _bottomInset(context)),
+                    // Single tap with the hand tool toggles the bars. Double
+                    // tap keeps pdfrx's zoom.
+                    onGeneralTap: (context, controller, details) {
+                      if (details.type != PdfViewerGeneralTapType.tap || _tool != Tool.pan) return false;
+                      _setChrome(!_chrome);
+                      return true;
+                    },
                     panEnabled: !drawing || _multiTouch,
                     scaleEnabled: !drawing || _multiTouch,
                     onPageChanged: _onPageChanged,
@@ -278,6 +331,8 @@ class _ReaderPageState extends State<ReaderPage> {
                     },
                     onViewerReady: (document, controller) {
                       _document = document;
+                      controller.addListener(_onControllerChanged);
+                      _onControllerChanged();
                       final p = _initialPage;
                       if (p != null && p > 1 && p <= document.pages.length) {
                         controller.goToPage(pageNumber: p);
@@ -297,9 +352,130 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ],
                   ),
-                )),
-      bottomNavigationBar: _bytes == null ? null : _toolbar(),
+                ));
+
+    const dur = Duration(milliseconds: 220);
+    final ready = _bytes != null && _error == null;
+    return Scaffold(
+      // Nothing resizes the viewer: not the keyboard (the note dialog's
+      // keyboard made pdfrx re-fit the page) and not the bars, which float.
+      resizeToAvoidBottomInset: false,
+      body: Stack(children: [
+        Positioned.fill(child: ready ? body : SafeArea(child: body)),
+        if (ready)
+          // Draggable scrollbar thumb with the page number. It lives outside
+          // the viewer so its track can stay between the floating bars.
+          Positioned.fill(
+            child: _PageThumb(
+              controller: _controller,
+              top: _chrome ? _topInset(context) + 8 : MediaQuery.paddingOf(context).top + 8,
+              bottom: _chrome ? _bottomInset(context) + 8 : MediaQuery.paddingOf(context).bottom + 8,
+            ),
+          ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            ignoring: !_chrome,
+            child: AnimatedSlide(
+              duration: dur,
+              curve: Curves.easeOut,
+              offset: _chrome ? Offset.zero : const Offset(0, -1),
+              child: appBar,
+            ),
+          ),
+        ),
+        if (ready)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              ignoring: !_chrome,
+              child: AnimatedSlide(
+                duration: dur,
+                curve: Curves.easeOut,
+                offset: _chrome ? Offset.zero : const Offset(0, 1),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: _statusPill()),
+                  Material(color: Theme.of(context).colorScheme.surfaceContainer, child: _toolbar()),
+                ]),
+              ),
+            ),
+          ),
+      ]),
     );
+  }
+
+  double _topInset(BuildContext context) => MediaQuery.paddingOf(context).top + kToolbarHeight;
+  double _bottomInset(BuildContext context) => MediaQuery.paddingOf(context).bottom + 56 + 48;
+
+  /// "3 / 12 · 86%": tap the page part to jump to a page, the zoom part for
+  /// zoom presets.
+  Widget _statusPill() {
+    final scheme = Theme.of(context).colorScheme;
+    final total = _document?.pages.length ?? (widget.doc.data['pageCount'] as int? ?? 0);
+    final style = TextStyle(color: scheme.onInverseSurface, fontSize: 13, fontWeight: FontWeight.w600);
+    return Material(
+      color: scheme.inverseSurface.withValues(alpha: 0.85),
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        InkWell(
+          onTap: _goToPageDialog,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
+            child: ValueListenableBuilder<int>(
+              valueListenable: _page,
+              builder: (_, p, __) => Text('$p / $total', style: style),
+            ),
+          ),
+        ),
+        Container(width: 1, height: 16, color: scheme.onInverseSurface.withValues(alpha: 0.3)),
+        PopupMenuButton<_ZoomPreset>(
+          tooltip: 'Zoom',
+          onSelected: _applyZoom,
+          itemBuilder: (_) => [for (final z in _ZoomPreset.all) PopupMenuItem(value: z, child: Text(z.label))],
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 14, 6),
+            child: ValueListenableBuilder<int>(
+              valueListenable: _zoomPct,
+              builder: (_, z, __) => Text('$z%', style: style),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _goToPageDialog() async {
+    final total = _document?.pages.length ?? 0;
+    if (total == 0) return;
+    final ctl = TextEditingController();
+    final n = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        void submit() => Navigator.pop(ctx, int.tryParse(ctl.text.trim()));
+        return AlertDialog(
+          title: const Text('Go to page'),
+          content: TextField(
+            controller: ctl,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(hintText: '1 – $total'),
+            onSubmitted: (_) => submit(),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: submit, child: const Text('Go')),
+          ],
+        );
+      },
+    );
+    if (n == null) return;
+    await _controller.goToPage(pageNumber: n.clamp(1, total));
   }
 
   Widget _swatch(Color c, {double size = 28}) {
@@ -387,5 +563,127 @@ class SyncIndicator extends StatelessWidget {
         return IconButton(icon: Icon(icon), tooltip: tip, onPressed: engine.syncNow);
       },
     );
+  }
+}
+
+enum _ZoomKind { fitWidth, fitPage, percent }
+
+class _ZoomPreset {
+  const _ZoomPreset(this.label, this.kind, [this.percent]);
+  final String label;
+  final _ZoomKind kind;
+  final int? percent;
+
+  static const all = [
+    _ZoomPreset('Fit width', _ZoomKind.fitWidth),
+    _ZoomPreset('Fit page', _ZoomKind.fitPage),
+    _ZoomPreset('50%', _ZoomKind.percent, 50),
+    _ZoomPreset('60%', _ZoomKind.percent, 60),
+    _ZoomPreset('75%', _ZoomKind.percent, 75),
+    _ZoomPreset('100%', _ZoomKind.percent, 100),
+    _ZoomPreset('125%', _ZoomKind.percent, 125),
+    _ZoomPreset('150%', _ZoomKind.percent, 150),
+    _ZoomPreset('200%', _ZoomKind.percent, 200),
+    _ZoomPreset('300%', _ZoomKind.percent, 300),
+  ];
+}
+
+/// Scrollbar thumb on the right edge that shows the current page number and
+/// can be dragged to scroll through the document.
+class _PageThumb extends StatefulWidget {
+  const _PageThumb({required this.controller, required this.top, required this.bottom});
+  final PdfViewerController controller;
+  final double top;
+  final double bottom;
+
+  @override
+  State<_PageThumb> createState() => _PageThumbState();
+}
+
+class _PageThumbState extends State<_PageThumb> {
+  static const _size = Size(46, 30);
+  bool _dragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  /// Scroll fraction 0..1 of the current view, and the range it maps to (in
+  /// document coordinates). Null when the document fits on screen.
+  ({double fraction, double minY, double range})? _metrics() {
+    final c = widget.controller;
+    if (!c.isReady) return null;
+    final view = c.visibleRect;
+    final margin = c.params.boundaryMargin;
+    final hasMargin = margin != null && !margin.vertical.isInfinite;
+    final docH = c.documentSize.height + (hasMargin ? margin.vertical : 0);
+    if (docH <= view.height) return null;
+    final minY = hasMargin ? -margin.top : 0.0;
+    final range = docH - view.height;
+    return (fraction: ((view.top - minY) / range).clamp(0.0, 1.0), minY: minY, range: range);
+  }
+
+  void _dragTo(double localY, double track) {
+    final m = _metrics();
+    if (m == null) return;
+    final c = widget.controller;
+    final f = ((localY - widget.top - _size.height / 2) / track).clamp(0.0, 1.0);
+    final view = c.visibleRect;
+    final target = Offset(view.center.dx, m.minY + f * m.range + view.height / 2);
+    c.goTo(c.calcMatrixFor(target), duration: Duration.zero);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = _metrics();
+    if (m == null) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(builder: (context, box) {
+      final track = (box.maxHeight - widget.top - widget.bottom - _size.height).clamp(0.0, double.infinity);
+      final y = widget.top + m.fraction * track;
+      return Stack(children: [
+        Positioned(
+          right: 0,
+          top: y,
+          width: _size.width,
+          height: _size.height,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart: (_) => setState(() => _dragging = true),
+            onVerticalDragUpdate: (d) {
+              final local = (context.findRenderObject() as RenderBox).globalToLocal(d.globalPosition);
+              _dragTo(local.dy, track);
+            },
+            onVerticalDragEnd: (_) => setState(() => _dragging = false),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                color: (_dragging ? scheme.primary : scheme.inverseSurface).withValues(alpha: 0.85),
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
+              ),
+              alignment: Alignment.center,
+              child: Text('${widget.controller.pageNumber ?? ''}',
+                  style: TextStyle(
+                    color: _dragging ? scheme.onPrimary : scheme.onInverseSurface,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  )),
+            ),
+          ),
+        ),
+      ]);
+    });
   }
 }

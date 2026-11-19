@@ -100,6 +100,12 @@ class LocalStore {
       .onSnapshots(_db)
       .map((s) => s.map((e) => SyncRecord.fromDb(e.value)).toList());
 
+  /// Reading positions of all documents (kind `readstate`, id = document id).
+  Stream<List<SyncRecord>> watchReadStates() => _records
+      .query(finder: Finder(filter: Filter.and([Filter.equals('kind', 'readstate'), Filter.equals('deleted', false)])))
+      .onSnapshots(_db)
+      .map((s) => s.map((e) => SyncRecord.fromDb(e.value)).toList());
+
   Stream<int> watchPendingCount() => _records
       .query(finder: Finder(filter: Filter.equals('dirty', true)))
       .onSnapshots(_db)
