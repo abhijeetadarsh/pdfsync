@@ -52,19 +52,26 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 8),
                 Text('PDF Sync', textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 24),
-                TextField(controller: _server, decoration: const InputDecoration(labelText: 'Server URL'), keyboardType: TextInputType.url),
+                TextField(
+                    controller: _server,
+                    decoration: const InputDecoration(labelText: 'Server URL'),
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
                 TextField(
                     controller: _email,
                     decoration: const InputDecoration(labelText: 'Email'),
                     keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email]),
+                    autofillHints: const [AutofillHints.email],
+                    autocorrect: false,
+                    textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
                 TextField(
                     controller: _password,
                     decoration: const InputDecoration(labelText: 'Password (8+ characters)'),
                     obscureText: true,
                     autofillHints: const [AutofillHints.password],
+                    textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _submit(false)),
                 if (_error != null) ...[
                   const SizedBox(height: 12),

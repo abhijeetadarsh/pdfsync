@@ -34,9 +34,47 @@ class _AnnotationLayerState extends State<AnnotationLayer> {
   List<Offset> _stroke = [];
   Offset? _dragStart;
   Offset? _dragEnd;
+  Size _size = Size.zero;
 
-  Offset _norm(Offset local, Size s) =>
-      Offset((local.dx / s.width).clamp(0.0, 1.0), (local.dy / s.height).clamp(0.0, 1.0));
+  // Pointers currently down on this page. One finger draws; as soon as a
+  // second finger lands the gesture belongs to the viewer (scroll / pinch
+  // zoom), so whatever was being drawn is discarded.
+  final Set<int> _pointers = {};
+  bool _multi = false;
+  final Set<String> _erasedThisGesture = {};
+
+  Offset _norm(Offset local) => Offset(
+      (local.dx / _size.width).clamp(0.0, 1.0), (local.dy / _size.height).clamp(0.0, 1.0));
+
+  void _cancelLive() {
+    if (_stroke.isEmpty && _dragStart == null) return;
+    setState(() {
+      _stroke = [];
+      _dragStart = _dragEnd = null;
+    });
+  }
+
+  void _onDown(PointerDownEvent e) {
+    _pointers.add(e.pointer);
+    if (_pointers.length > 1) {
+      _multi = true;
+      _cancelLive();
+      return;
+    }
+    _erasedThisGesture.clear();
+    _down(_norm(e.localPosition));
+  }
+
+  void _onMove(PointerMoveEvent e) {
+    if (_multi || !_pointers.contains(e.pointer)) return;
+    _move(_norm(e.localPosition));
+  }
+
+  void _onUp(PointerEvent e) {
+    final wasTracked = _pointers.remove(e.pointer);
+    if (wasTracked && !_multi) _up(cancelled: e is PointerCancelEvent);
+    if (_pointers.isEmpty) _multi = false;
+  }
 
   void _down(Offset p) {
     switch (widget.tool) {
@@ -71,20 +109,24 @@ class _AnnotationLayerState extends State<AnnotationLayer> {
     }
   }
 
-  void _up() {
-    final base = {'page': widget.pageNumber, 'color': widget.color.toARGB32()};
-    if (widget.tool == Tool.ink && _stroke.isNotEmpty) {
-      widget.onCreate({...base, 'type': 'ink', 'width': 0.003, 'points': flatten(simplify(_stroke))});
-    } else if (widget.tool == Tool.highlight && _dragStart != null && _dragEnd != null) {
-      final r = Rect.fromPoints(_dragStart!, _dragEnd!);
-      if (r.width > 0.005 && r.height > 0.003) {
-        widget.onCreate({
-          ...base,
-          'type': 'highlight',
-          'rects': [
-            [q(r.left), q(r.top), q(r.width), q(r.height)]
-          ],
-        });
+  void _up({bool cancelled = false}) {
+    if (!cancelled) {
+      final base = {'page': widget.pageNumber, 'color': widget.color.toARGB32()};
+      if (widget.tool == Tool.ink && _stroke.isNotEmpty) {
+        widget.onCreate({...base, 'type': 'ink', 'width': 0.003, 'points': flatten(simplify(_stroke))});
+      } else if (widget.tool == Tool.highlight && _dragStart != null && _dragEnd != null) {
+        final r = Rect.fromPoints(_dragStart!, _dragEnd!);
+        // Minimum size in page pixels, not normalized units: on a very tall
+        // page a normal drag is a tiny fraction of the height.
+        if (r.width * _size.width > 8 && r.height * _size.height > 6) {
+          widget.onCreate({
+            ...base,
+            'type': 'highlight',
+            'rects': [
+              [q(r.left), q(r.top), q(r.width), q(r.height)]
+            ],
+          });
+        }
       }
     }
     setState(() {
@@ -96,20 +138,23 @@ class _AnnotationLayerState extends State<AnnotationLayer> {
   Ann? _hit(Offset p) {
     final list = widget.annotations.value[widget.pageNumber] ?? const [];
     for (final a in list.reversed) {
-      if (a.hit(p)) return a;
+      if (_erasedThisGesture.contains(a.id)) continue;
+      if (a.hit(p, _size)) return a;
     }
     return null;
   }
 
   void _erase(Offset p) {
     final a = _hit(p);
-    if (a != null) widget.onDelete(a);
+    // Each annotation is deleted once per gesture, not once per move event.
+    if (a != null && _erasedThisGesture.add(a.id)) widget.onDelete(a);
   }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, c) {
       final size = Size(c.maxWidth, c.maxHeight);
+      _size = size;
       return ValueListenableBuilder<Map<int, List<Ann>>>(
         valueListenable: widget.annotations,
         builder: (context, map, _) {
@@ -129,26 +174,27 @@ class _AnnotationLayerState extends State<AnnotationLayer> {
             ),
             for (final a in anns.where((a) => a.type == 'note'))
               Positioned(
-                left: a.pos.dx * size.width - 12,
-                top: a.pos.dy * size.height - 12,
+                left: a.pos.dx * size.width - 14,
+                top: a.pos.dy * size.height - 14,
                 child: GestureDetector(
                   onTap: () => widget.onNoteTap(a),
                   child: Tooltip(
                     message: a.text,
-                    child: Icon(Icons.sticky_note_2, size: 24, color: a.color),
+                    child: Icon(Icons.sticky_note_2, size: 28, color: a.color),
                   ),
                 ),
               ),
           ]);
           if (widget.tool == Tool.pan) return layer;
-          // Listener sees raw pointers (no gesture-arena fight with the viewer,
-          // whose pan/zoom is disabled while a drawing tool is active).
+          // Listener sees raw pointers (no gesture-arena fight with the viewer).
+          // The reader enables the viewer's pan/zoom only while 2+ fingers are
+          // down, so one finger draws and two fingers navigate.
           return Listener(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: (e) => _down(_norm(e.localPosition, size)),
-            onPointerMove: (e) => _move(_norm(e.localPosition, size)),
-            onPointerUp: (_) => _up(),
-            onPointerCancel: (_) => _up(),
+            onPointerDown: _onDown,
+            onPointerMove: _onMove,
+            onPointerUp: _onUp,
+            onPointerCancel: _onUp,
             child: layer,
           );
         },
@@ -191,8 +237,9 @@ class _AnnPainter extends CustomPainter {
       switch (a.type) {
         case 'highlight':
           final paint = Paint()
-            ..color = a.color.withValues(alpha: 0.35)
-            ..blendMode = BlendMode.multiply;
+            // Plain alpha blending: `multiply` made highlights invisible on
+            // dark pages (anything multiplied with near-black stays black).
+            ..color = a.color.withValues(alpha: 0.4);
           for (final r in a.rects) {
             canvas.drawRect(den(r), paint);
           }
@@ -202,7 +249,7 @@ class _AnnPainter extends CustomPainter {
     }
     if (liveStroke.isNotEmpty) drawStroke(liveStroke, color, 0.003);
     if (liveRect != null) {
-      canvas.drawRect(den(liveRect!), Paint()..color = color.withValues(alpha: 0.35));
+      canvas.drawRect(den(liveRect!), Paint()..color = color.withValues(alpha: 0.4));
     }
   }
 

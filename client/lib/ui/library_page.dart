@@ -110,7 +110,7 @@ class LibraryPage extends StatelessWidget {
                 return ListTile(
                   leading: Icon(Icons.picture_as_pdf, color: d.dirty ? Colors.orange : Colors.red),
                   title: Text(d.data['title'] as String? ?? 'Untitled'),
-                  subtitle: Text('${d.data['pageCount'] ?? '?'} pages · ${size.toStringAsFixed(1)} MB'
+                  subtitle: Text('${_pages(d.data['pageCount'])} · ${size.toStringAsFixed(1)} MB'
                       '${d.dirty ? ' · not synced yet' : ''}'),
                   onTap: () => Navigator.push(
                       context, MaterialPageRoute(builder: (_) => ReaderPage(engine: engine, doc: d))),
@@ -136,3 +136,5 @@ class LibraryPage extends StatelessWidget {
     );
   }
 }
+
+String _pages(Object? n) => n is int ? (n == 1 ? '1 page' : '$n pages') : '? pages';

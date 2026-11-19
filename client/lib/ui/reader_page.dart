@@ -32,6 +32,33 @@ class _ReaderPageState extends State<ReaderPage> {
   StreamSubscription? _sub;
   Timer? _pageSave;
   int? _initialPage;
+  // Fingers currently on the viewer. While a drawing tool is active the viewer
+  // only pans/zooms when 2+ fingers are down; one finger draws.
+  final Set<int> _touches = {};
+  bool get _multiTouch => _touches.length > 1;
+
+  void _touch(int pointer, bool down) {
+    final before = _multiTouch;
+    down ? _touches.add(pointer) : _touches.remove(pointer);
+    if (before != _multiTouch && _tool != Tool.pan) setState(() {});
+  }
+
+  /// Keep the same part of the document in view across rotation / window
+  /// resizes, scaling the zoom with the view width, so a page that fit the
+  /// width in portrait still fits it in landscape (and vice versa).
+  void _onViewSizeChanged(Size viewSize, Size? oldViewSize, PdfViewerController controller) {
+    if (oldViewSize == null || oldViewSize.width <= 0) return;
+    if ((viewSize.width - oldViewSize.width).abs() < 1) return;
+    final center = controller.value.calcPosition(oldViewSize);
+    final zoom = (controller.currentZoom * viewSize.width / oldViewSize.width)
+        .clamp(controller.minScale, controller.maxScale);
+    // Not synchronously: this can be called during build.
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (!mounted || !controller.isReady) return;
+      controller.goTo(controller.makeMatrixInSafeRange(controller.calcMatrixFor(center, zoom: zoom)),
+          duration: Duration.zero);
+    });
+  }
 
   String get _docId => widget.doc.id;
 
@@ -133,13 +160,18 @@ class _ReaderPageState extends State<ReaderPage> {
                   const SizedBox(height: 12),
                   const Text('Downloading…'),
                 ]))
-              : PdfViewer.data(
+              : Listener(
+                  onPointerDown: (e) => _touch(e.pointer, true),
+                  onPointerUp: (e) => _touch(e.pointer, false),
+                  onPointerCancel: (e) => _touch(e.pointer, false),
+                  child: PdfViewer.data(
                   _bytes!,
                   sourceName: widget.doc.data['sha256'] as String,
                   params: PdfViewerParams(
-                    panEnabled: !drawing,
-                    scaleEnabled: !drawing,
+                    panEnabled: !drawing || _multiTouch,
+                    scaleEnabled: !drawing || _multiTouch,
                     onPageChanged: _onPageChanged,
+                    onViewSizeChanged: _onViewSizeChanged,
                     onViewerReady: (document, controller) {
                       final p = _initialPage;
                       if (p != null && p > 1 && p <= document.pages.length) {
@@ -161,49 +193,73 @@ class _ReaderPageState extends State<ReaderPage> {
                       ),
                     ],
                   ),
-                ),
+                )),
       bottomNavigationBar: _bytes == null ? null : _toolbar(),
     );
   }
 
+  Widget _swatch(Color c, {double size = 28}) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = _color == c;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: c,
+        shape: BoxShape.circle,
+        // A visible outline even for the dark swatch on a dark toolbar.
+        border: Border.all(width: selected ? 3 : 1.5, color: selected ? scheme.primary : scheme.outline),
+      ),
+    );
+  }
+
   Widget _toolbar() {
+    final scheme = Theme.of(context).colorScheme;
     Widget toolBtn(Tool t, IconData icon, String tip) => IconButton(
           tooltip: tip,
           isSelected: _tool == t,
           icon: Icon(icon),
-          style: IconButton.styleFrom(
-            backgroundColor: _tool == t ? Theme.of(context).colorScheme.primaryContainer : null,
-          ),
+          style: IconButton.styleFrom(backgroundColor: _tool == t ? scheme.primaryContainer : null),
           onPressed: () => setState(() => _tool = t),
         );
+    final tools = [
+      toolBtn(Tool.pan, Icons.pan_tool_outlined, 'Navigate'),
+      toolBtn(Tool.highlight, Icons.highlight, 'Highlight (drag)'),
+      toolBtn(Tool.ink, Icons.draw_outlined, 'Pen'),
+      toolBtn(Tool.note, Icons.sticky_note_2_outlined, 'Note (tap)'),
+      toolBtn(Tool.eraser, Icons.auto_fix_normal_outlined, 'Eraser'),
+    ];
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(children: [
-          toolBtn(Tool.pan, Icons.pan_tool_outlined, 'Navigate'),
-          toolBtn(Tool.highlight, Icons.highlight, 'Highlight (drag)'),
-          toolBtn(Tool.ink, Icons.draw_outlined, 'Pen'),
-          toolBtn(Tool.note, Icons.sticky_note_2_outlined, 'Note (tap)'),
-          toolBtn(Tool.eraser, Icons.auto_fix_normal_outlined, 'Eraser'),
-          const Spacer(),
-          for (final c in palette)
-            GestureDetector(
-              onTap: () => setState(() => _color = c),
-              child: Container(
-                width: 26,
-                height: 26,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                decoration: BoxDecoration(
-                  color: c,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    width: _color == c ? 3 : 1,
-                    color: _color == c ? Theme.of(context).colorScheme.primary : Colors.black26,
+        child: LayoutBuilder(builder: (context, c) {
+          // 5 tools (48 each) + 5 swatches (34 each) need ~420 dp. On narrower
+          // screens (phones in portrait) the colours collapse into one button.
+          final wide = c.maxWidth >= 440;
+          return Row(children: [
+            ...tools,
+            const Spacer(),
+            if (wide)
+              for (final col in palette)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: InkResponse(
+                    onTap: () => setState(() => _color = col),
+                    radius: 20,
+                    child: _swatch(col),
                   ),
-                ),
+                )
+            else
+              PopupMenuButton<Color>(
+                tooltip: 'Colour',
+                onSelected: (col) => setState(() => _color = col),
+                itemBuilder: (_) => [
+                  for (final col in palette) PopupMenuItem(value: col, child: Center(child: _swatch(col, size: 32))),
+                ],
+                child: Padding(padding: const EdgeInsets.all(8), child: _swatch(_color)),
               ),
-            ),
-        ]),
+          ]);
+        }),
       ),
     );
   }

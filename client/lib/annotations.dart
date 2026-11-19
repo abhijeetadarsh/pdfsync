@@ -40,19 +40,25 @@ class Ann {
 
   String get text => (d['text'] as String?) ?? '';
 
-  /// Hit test in normalized coordinates (used by the eraser and note taps).
-  bool hit(Offset p, {double tol = 0.015}) {
+  /// Hit test (used by the eraser and note taps). [p] is normalized; the test
+  /// itself runs in page pixels ([pageSize]) so the tolerance is the same in
+  /// both directions – normalized units would make it huge vertically on tall
+  /// pages (a 0.015 tolerance on a 15000 px high page is 225 px).
+  bool hit(Offset p, Size pageSize, {double tolPx = 12}) {
+    Offset px(Offset o) => Offset(o.dx * pageSize.width, o.dy * pageSize.height);
+    final pp = px(p);
     switch (type) {
       case 'highlight':
-        return rects.any((r) => r.inflate(tol).contains(p));
+        return rects.any((r) => Rect.fromPoints(px(r.topLeft), px(r.bottomRight)).inflate(tolPx).contains(pp));
       case 'ink':
-        final pts = points;
+        final pts = points.map(px).toList();
+        final reach = tolPx + width * pageSize.width / 2;
         for (var i = 0; i + 1 < pts.length; i++) {
-          if (_distToSegment(p, pts[i], pts[i + 1]) < tol + width) return true;
+          if (_distToSegment(pp, pts[i], pts[i + 1]) < reach) return true;
         }
-        return pts.length == 1 && (pts.first - p).distance < tol;
+        return pts.length == 1 && (pts.first - pp).distance < reach;
       case 'note':
-        return (pos - p).distance < tol * 2.5;
+        return (px(pos) - pp).distance < tolPx * 2;
     }
     return false;
   }
