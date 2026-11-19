@@ -51,7 +51,20 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_chrome == visible) return;
     setState(() => _chrome = visible);
     SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
-    // The page never moves: the bars only slide in over it / away from it.
+    // The viewer sits *between* the bars, so they never cover the page. On
+    // toggle its top edge moves by the bar height; shifting the content by the
+    // same amount inside the viewer keeps the page perfectly still on screen –
+    // hiding reveals more of the page above, showing tucks that strip away.
+    final h = _barTop;
+    if (h != null) _pendingShift = visible ? -h : h;
+  }
+
+  /// Content shift (screen px) to apply once the viewer has its new size.
+  double? _pendingShift;
+
+  void _shiftContent(PdfViewerController c, double dy) {
+    if (!c.isReady || dy == 0) return;
+    c.goTo(Matrix4.translationValues(0, dy, 0)..multiply(c.value), duration: Duration.zero);
   }
 
   // Heights covered by the floating bars, measured once while they are shown.
@@ -126,7 +139,13 @@ class _ReaderPageState extends State<ReaderPage> {
   /// width in portrait still fits it in landscape (and vice versa).
   void _onViewSizeChanged(Size viewSize, Size? oldViewSize, PdfViewerController controller) {
     if (oldViewSize == null || oldViewSize.width <= 0) return;
-    if ((viewSize.width - oldViewSize.width).abs() < 1) return;
+    if ((viewSize.width - oldViewSize.width).abs() < 1) {
+      // Height-only change = bars toggled: keep the page still on screen.
+      final dy = _pendingShift;
+      _pendingShift = null;
+      if (dy != null) Future.microtask(() => _shiftContent(controller, dy));
+      return;
+    }
     // Rotation: system bar sizes differ, re-measure on the next build.
     if (_chrome) _barTop = _barBottom = null;
     final center = controller.value.calcPosition(oldViewSize);
@@ -351,6 +370,13 @@ class _ReaderPageState extends State<ReaderPage> {
                       final p = _initialPage;
                       if (p != null && p > 1 && p <= document.pages.length) {
                         controller.goToPage(pageNumber: p);
+                      } else {
+                        // Start with the first page flush against the top bar
+                        // (no empty boundary-margin gap above it).
+                        Future.microtask(() {
+                          final top = controller.visibleRect.top;
+                          if (top < 0) _shiftContent(controller, top * controller.currentZoom);
+                        });
                       }
                     },
                     pageOverlaysBuilder: (context, pageRect, page) => [
@@ -372,11 +398,17 @@ class _ReaderPageState extends State<ReaderPage> {
     const dur = Duration(milliseconds: 220);
     final ready = _bytes != null && _error == null;
     return Scaffold(
-      // Nothing resizes the viewer: not the keyboard (the note dialog's
-      // keyboard made pdfrx re-fit the page) and not the bars, which float.
+      // The keyboard never resizes the viewer (the note dialog's keyboard made
+      // pdfrx re-fit the page). Only the bars do, see _setChrome.
       resizeToAvoidBottomInset: false,
       body: Stack(children: [
-        Positioned.fill(child: ready ? body : SafeArea(child: body)),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: ready && _chrome ? _barTop ?? 0 : 0,
+          bottom: ready && _chrome ? _barBottom ?? 0 : 0,
+          child: ready ? body : SafeArea(child: body),
+        ),
         if (ready)
           // Draggable scrollbar thumb with the page number. It lives outside
           // the viewer so its track can stay between the floating bars.

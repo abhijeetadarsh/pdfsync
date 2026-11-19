@@ -155,3 +155,12 @@ Branch: `fix/android-testing` (from `main` @ `66dc750`, the imported zip).
   the fixed insets (which fixed the jump while scrolling with hidden bars).
   Verified: heading at 533 px stays at 533 px on hide; after scrolling, stays
   at 363 px on show.
+- **Revised again per user:** the top bar must never cover the page. The viewer
+  is now laid out *between* the bars while they are shown; on toggle its top
+  edge moves by the bar height and the content is shifted by the same amount
+  inside the viewer (`_pendingShift`, applied in `onViewSizeChanged`), so the
+  page stays still on screen: hiding reveals more page above, showing tucks
+  that strip back behind the bar's edge. On open, page 1 sits flush under the
+  bar (boundary-margin gap removed).
+  Verified on the tablet: open → page top right under the bar; heading at
+  590 px stays at 590 on hide; after scrolling, 420 px stays at 420 on show.
