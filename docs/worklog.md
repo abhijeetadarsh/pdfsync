@@ -407,3 +407,16 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   failed to extract it ("Artifact download failed after 5 retries").
 - Fix: the release job downloads only the `android`, `linux` and `windows`
   artifacts, and the server job sets `DOCKER_BUILD_RECORD_UPLOAD=false`.
+
+## 2026-11-21 (cont.) – VM deploy script
+- `deploy/deploy.sh`: one file to copy to the VM. It writes a Docker Compose
+  setup (server, plus optional Caddy for HTTPS), logs in to ghcr.io, pulls,
+  starts, and waits for `/healthz`. Settings are remembered in `.env`, so
+  re-running it updates. See [ci-cd.md](ci-cd.md#deploying-the-server-on-a-vm).
+- Tested with stand-in `docker`/`curl` commands (no Docker on this machine):
+  first run with a domain (login, removing a manual container), re-run with
+  remembered settings, `--domain none` (Caddy removed, port opened again), a
+  missing token without a terminal, and an unknown option. Found and fixed: the
+  script exited with an error where `hostname -I` is unsupported. Not yet run
+  against real Docker on a VM.
+

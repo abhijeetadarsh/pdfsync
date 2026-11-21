@@ -16,16 +16,35 @@ The version comes from `client/pubspec.yaml` (`version: 1.0.0+1`; the build
 number is replaced by the workflow run number). Bump the version there for a new
 release line.
 
-## Running the server image
-The image is private (it belongs to a private repo). On the host:
+## Deploying the server on a VM
+`deploy/deploy.sh` is a single self-contained script that runs on the VM.
+It needs Docker with the Compose plugin and curl.
 
 ```sh
-echo <a GitHub token with read:packages> | docker login ghcr.io -u <user> --password-stdin
-docker run -d --name pdfsync -p 8080:8080 -v pdfsync-data:/data \
-  --restart unless-stopped ghcr.io/<owner>/pdfsync-server:latest
+scp deploy/deploy.sh user@vm:~/      # from a machine with the repo
+ssh user@vm
+./deploy.sh                           # HTTP on :8080
+./deploy.sh --domain sync.example.com # or: HTTPS via Caddy (DNS must point at the VM, ports 80/443 open)
+./deploy.sh                           # later: pull the newest image and restart, same settings
 ```
 
-The CI only publishes the image; deploying it to a host is manual for now.
+What the script does:
+- Writes `~/pdfsync/docker-compose.yml` and `~/pdfsync/.env`. The settings are
+  remembered, so later runs need no options.
+- On the first pull, logs in to ghcr.io with a GitHub token that has the
+  `read:packages` scope. It asks for the token, or reads `GHCR_TOKEN`, because
+  the image is private.
+- With `--domain`, starts Caddy as an HTTPS reverse proxy with an automatic
+  certificate, and binds the server's port 8080 to localhost only.
+  `--domain none` switches back to plain HTTP.
+- Removes containers named `pdfsync`/`caddy` that were started by hand with
+  `docker run`; they would block the ports. Data is kept.
+- Waits until `/healthz` answers and prints the server URL to use in the apps.
+
+Data is in the Docker volume `pdfsync-data`, the same name as a manual
+`docker run -v pdfsync-data:/data`, so it survives updates and switching to
+the script. Other options: `--tag 1.0.0` (pin a version), `--max-upload-mb N`,
+`--dir PATH`. Logs: `cd ~/pdfsync && docker compose logs -f`.
 
 ## Android signing
 The release keystore was generated on 2026-11-21 and lives **outside the repo**

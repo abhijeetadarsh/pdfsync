@@ -76,4 +76,4 @@ Record kinds: `document`, `annotation`, `readstate`, `folder` (reserved for fold
 - Resumable chunked uploads for very large files. Postgres and S3 storage for running several servers.
 - Sharing documents with other users. The record model supports it: add an ACL on `docId`.
 
-**Releases:** every push to `main` runs the tests, publishes the server image to GHCR and attaches a signed Android APK, a Linux bundle and a Windows bundle to a GitHub Release. See [docs/ci-cd.md](docs/ci-cd.md).
+**Releases:** every push to `main` runs the tests, publishes the server image to GHCR and attaches a signed Android APK, a Linux bundle and a Windows bundle to a GitHub Release. Deploy the server on a VM with `deploy/deploy.sh` (Docker Compose, optional HTTPS). See [docs/ci-cd.md](docs/ci-cd.md).
