@@ -157,6 +157,14 @@ if ! $DOCKER pull -q "$IMAGE:$PDFSYNC_TAG" >/dev/null 2>&1; then
 fi
 
 say "Starting pdfsync ($IMAGE:$PDFSYNC_TAG on $PDFSYNC_LISTEN:$PDFSYNC_PORT${PDFSYNC_NETWORK:+, network $PDFSYNC_NETWORK})"
+# The server runs as the distroless "nonroot" user (uid 65532). A volume
+# created before the image shipped a nonroot-owned /data (or by a manual
+# `docker run`) is owned by root, and the server then fails with
+# "mkdir /data/blobs: permission denied". Create the container and volume
+# without starting them, then fix the owner if needed.
+$DOCKER compose up --no-start --remove-orphans
+$DOCKER run --rm -v pdfsync-data:/data busybox:1.37 \
+  sh -c '[ "$(stat -c %u /data)" = 65532 ] || { echo "==> Fixing data volume owner"; chown -R 65532:65532 /data; }'
 $DOCKER compose up -d --remove-orphans
 
 # --- health check -----------------------------------------------------------

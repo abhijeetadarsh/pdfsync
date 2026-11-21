@@ -426,3 +426,10 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   Confirmed from the CI log that the image is built for linux/amd64 and
   linux/arm64.
 
+- First real run on the user's VM (Oracle, Ubuntu) crash-looped with
+  `mkdir /data/blobs: permission denied`. The image runs as distroless nonroot
+  (uid 65532), but it had no `/data` directory, so the new named volume was
+  owned by root. Fixes: the Dockerfile now ships `/data` owned by 65532 (new
+  volumes take over that owner), and deploy.sh creates the stack with
+  `up --no-start` and changes the volume owner to 65532 (busybox one-off) when it is wrong, so
+  volumes that already exist are repaired too.
