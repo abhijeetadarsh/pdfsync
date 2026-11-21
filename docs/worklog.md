@@ -433,3 +433,8 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   volumes take over that owner), and deploy.sh creates the stack with
   `up --no-start` and changes the volume owner to 65532 (busybox one-off) when it is wrong, so
   volumes that already exist are repaired too.
+- Second VM run: the owner fix ran, but the server still did not come up. The
+  container was in Docker's restart back-off from the earlier crash loop, and
+  `compose up -d` does not restart an existing container, so it stayed there past the script's
+  30 s health check. deploy.sh now runs `compose restart server` after the fix
+  and waits up to 60 s.

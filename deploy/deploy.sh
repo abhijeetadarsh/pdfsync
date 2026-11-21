@@ -166,11 +166,15 @@ $DOCKER compose up --no-start --remove-orphans
 $DOCKER run --rm -v pdfsync-data:/data busybox:1.37 \
   sh -c '[ "$(stat -c %u /data)" = 65532 ] || { echo "==> Fixing data volume owner"; chown -R 65532:65532 /data; }'
 $DOCKER compose up -d --remove-orphans
+# A container that was crash-looping sits in Docker's restart back-off (up to
+# a minute between tries) and `up -d` leaves it there; restart it so it starts
+# now, with the fixed volume and the current settings.
+$DOCKER compose restart server >/dev/null
 
 # --- health check -----------------------------------------------------------
 HOST=$PDFSYNC_LISTEN
 [ "$HOST" = 0.0.0.0 ] && HOST=127.0.0.1
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   if [ "$(curl -fsS --max-time 2 "http://$HOST:$PDFSYNC_PORT/healthz" 2>/dev/null)" = ok ]; then
     say "pdfsync is running on $PDFSYNC_LISTEN:$PDFSYNC_PORT."
     if [ -n "$PDFSYNC_NETWORK" ]; then
@@ -189,4 +193,4 @@ for _ in $(seq 1 30); do
 done
 $DOCKER compose ps
 $DOCKER compose logs --tail 50 server
-die "the server did not become healthy within 30 s (logs above)"
+die "the server did not become healthy within 60 s (logs above)"
