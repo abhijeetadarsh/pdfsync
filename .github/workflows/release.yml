@@ -75,6 +75,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # build-push-action otherwise uploads a "*.dockerbuild" build record as
+      # a workflow artifact, which download-artifact can't extract.
+      DOCKER_BUILD_RECORD_UPLOAD: false
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -211,8 +215,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only the app bundles: other jobs' artifacts (e.g. Docker build records)
+      # are not release files, and the first release failed extracting one.
       - uses: actions/download-artifact@v4
         with:
+          pattern: "{android,linux,windows}"
           path: dist
           merge-multiple: true
       - name: Publish

@@ -399,3 +399,11 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   release app.
 - The Windows build has never been run.
 
+
+## 2026-11-21 (cont.) – First release run failed
+- Run 44914062145 (merge of PR #1): every build job passed, but `GitHub Release`
+  failed. `download-artifact` downloaded every artifact of the run, including
+  the `*.dockerbuild` build record that `docker/build-push-action` uploads, and
+  failed to extract it ("Artifact download failed after 5 retries").
+- Fix: the release job downloads only the `android`, `linux` and `windows`
+  artifacts, and the server job sets `DOCKER_BUILD_RECORD_UPLOAD=false`.
