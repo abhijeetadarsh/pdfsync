@@ -18,33 +18,44 @@ release line.
 
 ## Deploying the server on a VM
 `deploy/deploy.sh` is a single self-contained script that runs on the VM.
-It needs Docker with the Compose plugin and curl.
+It needs Docker with the Compose plugin and curl. HTTPS comes from your own
+reverse proxy (e.g. Caddy); the script only runs the server.
 
 ```sh
-scp deploy/deploy.sh user@vm:~/      # from a machine with the repo
+scp deploy/deploy.sh user@vm:~/   # from a machine with the repo
 ssh user@vm
-./deploy.sh                           # HTTP on :8080
-./deploy.sh --domain sync.example.com # or: HTTPS via Caddy (DNS must point at the VM, ports 80/443 open)
-./deploy.sh                           # later: pull the newest image and restart, same settings
+./deploy.sh --port 9000           # server on 127.0.0.1:9000 (for Caddy on the host)
+./deploy.sh                       # later: pull the newest image and restart, same settings
 ```
 
-What the script does:
-- Writes `~/pdfsync/docker-compose.yml` and `~/pdfsync/.env`. The settings are
-  remembered, so later runs need no options.
-- On the first pull, logs in to ghcr.io with a GitHub token that has the
-  `read:packages` scope. It asks for the token, or reads `GHCR_TOKEN`, because
-  the image is private.
-- With `--domain`, starts Caddy as an HTTPS reverse proxy with an automatic
-  certificate, and binds the server's port 8080 to localhost only.
-  `--domain none` switches back to plain HTTP.
-- Removes containers named `pdfsync`/`caddy` that were started by hand with
-  `docker run`; they would block the ports. Data is kept.
-- Waits until `/healthz` answers and prints the server URL to use in the apps.
+Options (remembered in `~/pdfsync/.env`):
+- `--port N`: host port to expose the server on (default 8080).
+- `--listen ADDR`: `127.0.0.1` (default; only the VM itself can reach it) or
+  `0.0.0.0` (reachable directly over plain HTTP).
+- `--network NAME`: also join an existing Docker network, so a Caddy
+  *container* on it reaches the server as `pdfsync:8080`. `--network none` leaves
+  the network again.
+- `--tag 1.0.0`, `--max-upload-mb N`, `--dir PATH`.
 
-Data is in the Docker volume `pdfsync-data`, the same name as a manual
-`docker run -v pdfsync-data:/data`, so it survives updates and switching to
-the script. Other options: `--tag 1.0.0` (pin a version), `--max-upload-mb N`,
-`--dir PATH`. Logs: `cd ~/pdfsync && docker compose logs -f`.
+Caddyfile:
+```
+sync.example.com {
+  reverse_proxy 127.0.0.1:9000   # Caddy on the host
+  # reverse_proxy pdfsync:8080   # Caddy in a container on --network
+}
+```
+
+What the script also does:
+- On the first pull, logs in to ghcr.io with a token that has the
+  `read:packages` scope. It asks for the token, or reads `GHCR_TOKEN`.
+- Replaces a container named `pdfsync` that was started by hand with
+  `docker run`.
+- Waits until `/healthz` answers.
+
+The image is a multi-platform image (linux/amd64 and linux/arm64), so Docker
+pulls the variant that matches the VM. 32-bit ARM is not built. Data is in the
+Docker volume `pdfsync-data` and survives updates. Logs:
+`cd ~/pdfsync && docker compose logs -f`.
 
 ## Android signing
 The release keystore was generated on 2026-11-21 and lives **outside the repo**

@@ -419,4 +419,10 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   missing token without a terminal, and an unknown option. Found and fixed: the
   script exited with an error where `hostname -I` is unsupported. Not yet run
   against real Docker on a VM.
+- Revised after user feedback (they already run Caddy and want a different
+  port): removed the built-in Caddy. Added `--port`, `--listen` (default
+  127.0.0.1) and `--network` (join an existing Docker network as `pdfsync`).
+  Retested with the stand-ins, including invalid port and network values.
+  Confirmed from the CI log that the image is built for linux/amd64 and
+  linux/arm64.
 
