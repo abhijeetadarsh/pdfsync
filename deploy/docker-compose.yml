@@ -1,0 +1,17 @@
+name: pdfsync
+services:
+  server:
+    image: ghcr.io/abhijeetadarsh/pdfsync-server:latest
+    restart: unless-stopped
+
+    # change this with your user and group id 
+    user: "1001:1001"
+
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    ports:
+      - "127.0.0.1:8000:8080"    # Caddy: reverse_proxy 127.0.0.1:8000
+    volumes:
+      - ./data:/data             # = ~/pdfsync/data
