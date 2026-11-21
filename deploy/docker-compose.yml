@@ -1,0 +1,25 @@
+# pdfsync server. Data is stored in ./data next to this file (e.g. ~/pdfsync/data).
+#
+#   mkdir -p ~/pdfsync/data        # create it yourself first, so it's owned by you
+#   cd ~/pdfsync && docker compose up -d
+#
+# Update:  docker compose pull && docker compose up -d
+# Private image: once, `docker login ghcr.io -u abhijeetadarsh` with a token
+# that has the read:packages scope. Multi-arch (amd64 / arm64).
+name: pdfsync
+services:
+  server:
+    image: ghcr.io/abhijeetadarsh/pdfsync-server:latest
+    restart: unless-stopped
+    # Runs as your user (check with `id -u` / `id -g`; 1000 on a default
+    # Ubuntu VM), so the data folder stays owned by you. No root, no
+    # capabilities, read-only filesystem except ./data and a RAM /tmp.
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    ports:
+      - "127.0.0.1:8000:8080"   # Caddy: reverse_proxy 127.0.0.1:8000
+    volumes:
+      - ./data:/data

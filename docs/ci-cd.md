@@ -17,50 +17,22 @@ number is replaced by the workflow run number). Bump the version there for a new
 release line.
 
 ## Deploying the server on a VM
-`deploy/deploy.sh` is a single self-contained script that runs on the VM.
-It needs Docker with the Compose plugin and curl. HTTPS comes from your own
-reverse proxy (e.g. Caddy); the script only runs the server.
+Use `deploy/docker-compose.yml` with plain Docker Compose; there is no script.
+Data goes into `./data` next to the compose file (e.g. `~/pdfsync/data`).
 
 ```sh
-scp deploy/deploy.sh user@vm:~/   # from a machine with the repo
-ssh user@vm
-./deploy.sh --port 9000           # server on 127.0.0.1:9000 (for Caddy on the host)
-./deploy.sh                       # later: pull the newest image and restart, same settings
+mkdir -p ~/pdfsync/data            # create it yourself first, so you own it
+cp docker-compose.yml ~/pdfsync/
+docker login ghcr.io -u abhijeetadarsh   # once; token with read:packages
+cd ~/pdfsync && docker compose up -d
+docker compose pull && docker compose up -d   # update
 ```
 
-Options (remembered in `~/pdfsync/.env`):
-- `--port N`: host port to expose the server on (default 8080).
-- `--listen ADDR`: `127.0.0.1` (default; only the VM itself can reach it) or
-  `0.0.0.0` (reachable directly over plain HTTP).
-- `--network NAME`: also join an existing Docker network, so a Caddy
-  *container* on it reaches the server as `pdfsync:8080`. `--network none` leaves
-  the network again.
-- `--tag 1.0.0`, `--max-upload-mb N`, `--dir PATH`.
-
-Caddyfile:
-```
-sync.example.com {
-  reverse_proxy 127.0.0.1:9000   # Caddy on the host
-  # reverse_proxy pdfsync:8080   # Caddy in a container on --network
-}
-```
-
-What the script also does:
-- On the first pull, logs in to ghcr.io with a token that has the
-  `read:packages` scope. It asks for the token, or reads `GHCR_TOKEN`.
-- Replaces a container named `pdfsync` that was started by hand with
-  `docker run`.
-- Waits until `/healthz` answers.
-- Runs the server unprivileged: as the fixed non-root user 65532, with all
-  Linux capabilities dropped, `no-new-privileges`, and a read-only root
-  filesystem (it writes only to the `/data` volume and an in-memory `/tmp`).
-  The script itself runs no root containers. If an old volume is owned by root,
-  it prints the one `sudo chown` command to fix it instead of fixing it itself.
-
-The image is a multi-platform image (linux/amd64 and linux/arm64), so Docker
-pulls the variant that matches the VM. 32-bit ARM is not built. Data is in the
-Docker volume `pdfsync-data` and survives updates. Logs:
-`cd ~/pdfsync && docker compose logs -f`.
+The server runs as UID/GID 1000 (the default first user on Ubuntu; change
+`user:` if `id -u` differs), with no capabilities, `no-new-privileges` and a
+read-only root filesystem. It listens on `127.0.0.1:8000` for a reverse proxy
+on the host (`reverse_proxy 127.0.0.1:8000` in the Caddyfile). The image is
+multi-platform (amd64, arm64).
 
 ## Android signing
 The release keystore was generated on 2026-11-21 and lives **outside the repo**

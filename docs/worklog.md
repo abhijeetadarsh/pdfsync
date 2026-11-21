@@ -445,3 +445,7 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   `sudo chown` command to run. Hardened the service: `user: 65532:65532`,
   `cap_drop: ALL`, `no-new-privileges`, `read_only` with a tmpfs `/tmp` (the
   server writes only under /data; SQLite may use /tmp).
+- The user rejected the deploy script ("only docker compose file"). Replaced
+  it with `deploy/docker-compose.yml`: data in `./data` next to the compose file (bind mount),
+  running as the host user 1000:1000 so no chown or root step is needed, locked
+  down as before, published on 127.0.0.1:8000 for the user's Caddy.
