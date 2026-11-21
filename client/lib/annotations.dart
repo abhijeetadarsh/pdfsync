@@ -22,21 +22,23 @@ class Ann {
   String get type => d['type'] as String;
   Color get color => Color(d['color'] as int);
 
-  List<Rect> get rects => ((d['rects'] as List?) ?? const [])
+  // Parsed once per Ann (a new Ann is made whenever the store changes):
+  // painting and eraser hit tests read these on every frame / pointer move.
+  late final List<Rect> rects = ((d['rects'] as List?) ?? const [])
       .map((r) => (r as List).map((v) => (v as num).toDouble()).toList())
       .map((r) => Rect.fromLTWH(r[0], r[1], r[2], r[3]))
       .toList();
 
-  List<Offset> get points {
+  late final List<Offset> points = () {
     final p = ((d['points'] as List?) ?? const []).map((v) => (v as num).toDouble()).toList();
     return [for (var i = 0; i + 1 < p.length; i += 2) Offset(p[i], p[i + 1])];
-  }
+  }();
 
   double get width => (d['width'] as num?)?.toDouble() ?? 0.003;
-  Offset get pos {
+  late final Offset pos = () {
     final p = (d['pos'] as List).map((v) => (v as num).toDouble()).toList();
     return Offset(p[0], p[1]);
-  }
+  }();
 
   String get text => (d['text'] as String?) ?? '';
 

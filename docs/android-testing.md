@@ -11,9 +11,9 @@ All testing is done from the PC; nobody taps the devices by hand.
 ## Setup
 ```bash
 cd client
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk /home/a8/develop/flutter-stable/bin/flutter build apk --debug
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk /home/a8/develop/flutter-stable/bin/flutter build apk --profile
 for d in HA2891X3 adea1d8a; do
-  adb -s $d install -r build/app/outputs/flutter-apk/app-debug.apk
+  adb -s $d install -r build/app/outputs/flutter-apk/app-profile.apk
   adb -s $d reverse tcp:8080 tcp:8080
 done
 ```
@@ -34,3 +34,11 @@ done
 ## Limits
 - `adb input` cannot do multi-touch, so two-finger pan/zoom while a drawing
   tool is active has to be checked by hand or with an instrumentation test.
+
+
+## Builds for testing
+`scripts/install-android.sh` installs the **profile** APK by default
+(`JAVA_HOME=/usr/lib/jvm/java-17-openjdk flutter build apk --profile`). It runs at
+release speed; the debug APK is far too slow to judge smoothness. Pass a path to
+install another APK. Add `--dart-define=PDFSYNC_PERF=true` to log frame times to
+logcat (see [performance.md](performance.md)).

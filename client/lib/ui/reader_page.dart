@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -9,7 +11,9 @@ import '../sync/record.dart';
 import '../sync/sync_engine.dart';
 import '../undo.dart';
 import 'annotation_layer.dart';
+import 'input_policy.dart';
 import 'reading_mode.dart';
+import 'scroll_feel.dart';
 import 'text_highlight.dart';
 
 class ReaderPage extends StatefulWidget {
@@ -39,10 +43,10 @@ class _ReaderPageState extends State<ReaderPage> {
   StreamSubscription? _sub;
   Timer? _pageSave;
   int? _initialPage;
-  // Fingers currently on the viewer. While a drawing tool is active the viewer
-  // only pans/zooms when 2+ fingers are down; one finger draws.
-  final Set<int> _touches = {};
-  bool get _multiTouch => _touches.length > 1;
+  // Which pointers draw and which scroll/zoom (mouse, stylus, finger rules –
+  // see InputPolicy). While a drawing tool is active the viewer only pans when
+  // a navigating pointer is down and nothing is drawing.
+  final _input = InputPolicy();
   PdfDocument? _document;
   final _controller = PdfViewerController();
   bool _positioned = false; // initial page placed (see onViewerReady)
@@ -53,7 +57,8 @@ class _ReaderPageState extends State<ReaderPage> {
   bool _chrome = true;
 
   void _setChrome(bool visible) {
-    if (_chrome == visible) return;
+    // Desktop: the bars stay put – clicking around with a mouse shouldn't hide them.
+    if (kDesktop || _chrome == visible) return;
     setState(() => _chrome = visible);
     SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
     // The viewer itself never resizes (a resize makes pdfrx re-clamp and
@@ -99,6 +104,11 @@ class _ReaderPageState extends State<ReaderPage> {
       ..setEntry(0, 3, c.value.storage[12])
       ..setEntry(1, 3, -pageTop * z + (_barTop ?? 0));
     await c.goTo(c.makeMatrixInSafeRange(m), duration: Duration.zero);
+    // pdfrx updates its page number after our listener ran; refresh the pill
+    // once it has, or it keeps showing the old page until the next scroll.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onControllerChanged();
+    });
   }
 
   // Heights of the top and bottom bars, measured once while they are shown.
@@ -164,10 +174,95 @@ class _ReaderPageState extends State<ReaderPage> {
     await sel.clearTextSelection();
   }
 
-  void _touch(int pointer, bool down) {
-    final before = _multiTouch;
-    down ? _touches.add(pointer) : _touches.remove(pointer);
-    if (before != _multiTouch && _tool != Tool.pan) setState(() {});
+  // What the viewer may do right now while a drawing tool is selected. Only a
+  // change of these rebuilds the reader: every rebuild hands pdfrx new params,
+  // which makes it re-lay out every page of the document.
+  bool _navPan = false;
+  bool _navScale = true;
+
+  void _onInputChanged() {
+    final pan = _input.hasNavigatePointer && !_input.hasDrawPointer;
+    final scale = !_input.hasDrawPointer;
+    if (pan == _navPan && scale == _navScale) return;
+    _navPan = pan;
+    _navScale = scale;
+    if (_tool != Tool.pan && mounted) setState(() {});
+  }
+
+  /// Every pointer in the app, whatever widget it lands on. A Listener
+  /// wrapped around the PdfViewer received no events at all (seen on Android
+  /// and Linux with pdfrx 2.12; cause inside pdfrx not pinned down), so the
+  /// bookkeeping can't rely on one: a missed "up" left a stylus registered as
+  /// down and every later finger was ignored as a palm. Global routes run
+  /// after the widgets' own handlers.
+  void _onGlobalPointer(PointerEvent e) {
+    if (e is PointerDownEvent) {
+      _input.down(e); // pointers that didn't land on a page (gutter, ...)
+    } else if (e is PointerUpEvent || e is PointerCancelEvent) {
+      _input.up(e.pointer);
+    }
+  }
+
+  void _setTool(Tool t) => setState(() => _tool = t);
+
+  Future<void> _fitWidth() => _applyZoom(_ZoomPreset.all.first);
+
+  /// Right-click menu on an annotation: recolour, edit (notes), delete.
+  Future<void> _annotationMenu(Ann a, Offset global) async {
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<Object>(
+      context: context,
+      position: RelativeRect.fromRect(global & Size.zero, Offset.zero & overlay.size),
+      items: [
+        PopupMenuItem<Object>(
+          enabled: false,
+          child: Builder(
+            builder: (ctx) => Row(mainAxisSize: MainAxisSize.min, children: [
+              for (final col in palette)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: InkResponse(
+                    onTap: () => Navigator.pop(ctx, col),
+                    radius: 18,
+                    child: _swatch(col, size: 24, selected: a.color.toARGB32() == col.toARGB32()),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+        if (a.type == 'note') const PopupMenuItem(value: 'edit', child: Text('Edit note…')),
+        const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case 'edit':
+        await _noteDialog(existing: a, page: a.page);
+      case 'delete':
+        await _remove(a);
+      case Color col when col.toARGB32() != a.color.toARGB32():
+        await _update(a, {...a.d, 'color': col.toARGB32()});
+    }
+  }
+
+  /// Keyboard shortcuts (any device with a keyboard; hinted in tooltips on desktop).
+  Map<ShortcutActivator, VoidCallback> get _shortcuts {
+    final cmd = defaultTargetPlatform == TargetPlatform.macOS;
+    SingleActivator k(LogicalKeyboardKey key, {bool shift = false}) =>
+        SingleActivator(key, control: !cmd, meta: cmd, shift: shift);
+    return {
+      k(LogicalKeyboardKey.keyZ): () => _history.canUndo ? _history.undo() : null,
+      k(LogicalKeyboardKey.keyZ, shift: true): () => _history.canRedo ? _history.redo() : null,
+      k(LogicalKeyboardKey.keyY): () => _history.canRedo ? _history.redo() : null,
+      k(LogicalKeyboardKey.keyG): _goToPageDialog,
+      k(LogicalKeyboardKey.digit0): _fitWidth,
+      const SingleActivator(LogicalKeyboardKey.escape): () => _setTool(Tool.pan),
+      const SingleActivator(LogicalKeyboardKey.keyV): () => _setTool(Tool.pan),
+      const SingleActivator(LogicalKeyboardKey.keyH): () => _setTool(Tool.highlight),
+      const SingleActivator(LogicalKeyboardKey.keyP): () => _setTool(Tool.ink),
+      const SingleActivator(LogicalKeyboardKey.keyN): () => _setTool(Tool.note),
+      const SingleActivator(LogicalKeyboardKey.keyE): () => _setTool(Tool.eraser),
+    };
   }
 
   /// Keep the same part of the document in view across rotation / window
@@ -196,6 +291,8 @@ class _ReaderPageState extends State<ReaderPage> {
     super.initState();
     // Live query: annotations made on another device appear here within ~1 s
     // (server poke -> delta sync -> local DB -> this stream).
+    _input.addListener(_onInputChanged);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onGlobalPointer);
     _sub = widget.engine.store.watchAnnotations(_docId).listen((list) {
       final m = <int, List<Ann>>{};
       for (final r in list) {
@@ -229,6 +326,8 @@ class _ReaderPageState extends State<ReaderPage> {
     _pageSave?.cancel();
     _anns.dispose();
     _history.dispose();
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onGlobalPointer);
+    _input.dispose();
     _controller.removeListener(_onControllerChanged);
     _zoomPct.dispose();
     _page.dispose();
@@ -295,12 +394,12 @@ class _ReaderPageState extends State<ReaderPage> {
           listenable: _history,
           builder: (context, _) => Row(mainAxisSize: MainAxisSize.min, children: [
             IconButton(
-              tooltip: 'Undo',
+              tooltip: _tip('Undo', '${_cmdLabel}Z'),
               icon: const Icon(Icons.undo),
               onPressed: _history.canUndo ? _history.undo : null,
             ),
             IconButton(
-              tooltip: 'Redo',
+              tooltip: _tip('Redo', '${_cmdLabel}Shift+Z'),
               icon: const Icon(Icons.redo),
               onPressed: _history.canRedo ? _history.redo : null,
             ),
@@ -347,139 +446,173 @@ class _ReaderPageState extends State<ReaderPage> {
                 const SizedBox(height: 12),
                 const Text('Downloading…'),
               ]))
-            : Listener(
-                onPointerDown: (e) => _touch(e.pointer, true),
-                onPointerUp: (e) => _touch(e.pointer, false),
-                onPointerCancel: (e) => _touch(e.pointer, false),
-                child: PdfViewer.data(
-                  _bytes!,
-                  sourceName: widget.doc.data['sha256'] as String,
-                  controller: _controller,
-                  params: PdfViewerParams(
-                    // Single tap with the hand tool toggles the bars. Double
-                    // tap keeps pdfrx's zoom.
-                    onGeneralTap: (context, controller, details) {
-                      if (details.type != PdfViewerGeneralTapType.tap || _tool != Tool.pan) return false;
-                      _setChrome(!_chrome);
-                      return true;
-                    },
-                    panEnabled: !drawing || _multiTouch,
-                    scaleEnabled: !drawing || _multiTouch,
-                    onPageChanged: _onPageChanged,
-                    onViewSizeChanged: _onViewSizeChanged,
-                    normalizeMatrix: _normalize,
-                    // Pinch zoom felt too twitchy at the default 1.0: zoom
-                    // follows (finger spread ratio)^0.6, so spreading the
-                    // fingers to twice the distance zooms ~1.5x, not 2x.
-                    scaleGestureSensitivity: 0.6,
-                    pageImageColorFilter: _mode.colorFilter,
-                    // The gutter around pages follows the app theme instead of
-                    // pdfrx's default mid-grey.
-                    backgroundColor: Theme.of(context).brightness == Brightness.dark
-                        ? const Color(0xFF26262B)
-                        : const Color(0xFFDADADF),
-                    // Long-press (touch) or drag (mouse) selects text with the
-                    // hand tool; the menu gets a "Highlight" action next to
-                    // Copy. Off while drawing so a pen stroke never selects.
-                    textSelectionParams: PdfTextSelectionParams(enabled: !drawing),
-                    customizeContextMenuItems: (params, items) {
-                      if (!params.textSelectionDelegate.hasSelectedText) return;
-                      items.insert(
-                        0,
-                        ContextMenuButtonItem(
-                          label: 'Highlight',
-                          onPressed: () {
-                            params.dismissContextMenu();
-                            _highlightSelection(params.textSelectionDelegate);
-                          },
-                        ),
-                      );
-                    },
-                    onViewerReady: (document, controller) {
-                      _document = document;
-                      controller.addListener(_onControllerChanged);
-                      _onControllerChanged();
-                      final p = _initialPage;
-                      // pdfrx runs its own initial page jump after this
-                      // callback (placing the page under the top bar). Position
-                      // once that has settled, keeping the page invisible
-                      // until then so it never visibly jumps.
-                      Future.delayed(const Duration(milliseconds: 150), () async {
-                        if (!mounted) return;
-                        await _goToPage(p != null && p >= 1 && p <= document.pages.length ? p : 1);
-                        if (mounted) setState(() => _positioned = true);
-                      });
-                    },
-                    pageOverlaysBuilder: (context, pageRect, page) => [
-                      AnnotationLayer(
-                        key: ValueKey('ann-${page.pageNumber}'),
-                        pageNumber: page.pageNumber,
-                        annotations: _anns,
-                        tool: _tool,
-                        color: _color,
-                        onCreate: _create,
-                        onDelete: _remove,
-                        onNoteTap: (a) => _noteDialog(existing: a, page: a.page),
-                        onNewNote: (pos) => _noteDialog(pos: pos, page: page.pageNumber),
-                      ),
-                    ],
+            : PdfViewer.data(
+                _bytes!,
+                sourceName: widget.doc.data['sha256'] as String,
+                controller: _controller,
+                params: PdfViewerParams(
+                  // Single tap with the hand tool toggles the bars (touch
+                  // only; on desktop they stay). Double tap keeps pdfrx's zoom.
+                  onGeneralTap: (context, controller, details) {
+                    if (kDesktop || details.type != PdfViewerGeneralTapType.tap || _tool != Tool.pan) return false;
+                    _setChrome(!_chrome);
+                    return true;
+                  },
+                  panEnabled: !drawing || _navPan,
+                  // Also on with nothing down, so Ctrl+wheel / trackpad pinch
+                  // zoom while a drawing tool is selected.
+                  scaleEnabled: !drawing || _navScale,
+                  onPageChanged: _onPageChanged,
+                  onViewSizeChanged: _onViewSizeChanged,
+                  normalizeMatrix: _normalize,
+                  // Pinch zoom felt too twitchy at the default 1.0: zoom
+                  // follows (finger spread ratio)^0.6, so spreading the
+                  // fingers to twice the distance zooms ~1.5x, not 2x.
+                  scaleGestureSensitivity: 0.6,
+                  // Mouse wheel: bigger steps that glide and accelerate when
+                  // the wheel is spun; finger / middle-drag flings that carry
+                  // like native scrolling; pages pre-rendered two screens
+                  // ahead. Values and reasoning in scroll_feel.dart.
+                  scrollByMouseWheel: kWheelStep,
+                  interactionDelegateProvider: const AcceleratedWheelScrollProvider(),
+                  interactionEndFrictionCoefficient: kFlingDrag,
+                  verticalCacheExtent: kCacheExtent,
+                  horizontalCacheExtent: kCacheExtent,
+                  // Render whole pages in one pass up to 4x (≈288 dpi) instead of
+                  // pdfrx's 200 dpi. Above the threshold pdfrx re-renders a sharp
+                  // image of just the visible area after every scroll and uploads it
+                  // to the GPU – at fit-width (3.1–3.7x on a laptop or the tablet)
+                  // that was the main cause of scroll jank. One full image per page is
+                  // cached and simply moved instead. See docs/performance.md.
+                  sizeDelegateProvider: const PdfViewerSizeDelegateProviderLegacy(onePassRenderingScaleThreshold: 4.0),
+                  // Room for ~10 such pages (~21 MB each) so scrolling back and
+                  // forth doesn't evict and re-render them.
+                  maxImageBytesCachedOnMemory: 256 * 1024 * 1024,
+                  // No blurred drop shadow: pdfrx paints it under every page in the
+                  // cache extent on every frame (blur mask filter). See docs/performance.md.
+                  pageDropShadow: null,
+                  pageImageColorFilter: _mode.colorFilter,
+                  // The gutter around pages follows the app theme instead of
+                  // pdfrx's default mid-grey.
+                  backgroundColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF26262B)
+                      : const Color(0xFFDADADF),
+                  // Long-press (touch) or drag (mouse) selects text with the
+                  // hand tool; the menu gets a "Highlight" action next to
+                  // Copy. Off while drawing so a pen stroke never selects.
+                  textSelectionParams: PdfTextSelectionParams(
+                    enabled: !drawing,
                   ),
-                ));
+                  customizeContextMenuItems: (params, items) {
+                    if (!params.textSelectionDelegate.hasSelectedText) return;
+                    items.insert(
+                      0,
+                      ContextMenuButtonItem(
+                        label: 'Highlight',
+                        onPressed: () {
+                          params.dismissContextMenu();
+                          _highlightSelection(params.textSelectionDelegate);
+                        },
+                      ),
+                    );
+                  },
+                  onViewerReady: (document, controller) {
+                    _document = document;
+                    controller.addListener(_onControllerChanged);
+                    _onControllerChanged();
+                    final p = _initialPage;
+                    // pdfrx runs its own initial page jump after this
+                    // callback (placing the page under the top bar). Position
+                    // once that has settled, keeping the page invisible
+                    // until then so it never visibly jumps.
+                    Future.delayed(const Duration(milliseconds: 150), () async {
+                      if (!mounted) return;
+                      await _goToPage(p != null && p >= 1 && p <= document.pages.length ? p : 1);
+                      if (mounted) setState(() => _positioned = true);
+                    });
+                  },
+                  pageOverlaysBuilder: (context, pageRect, page) => [
+                    AnnotationLayer(
+                      key: ValueKey('ann-${page.pageNumber}'),
+                      pageNumber: page.pageNumber,
+                      annotations: _anns,
+                      tool: _tool,
+                      color: _color,
+                      policy: _input,
+                      onCreate: _create,
+                      onDelete: _remove,
+                      onNoteTap: (a) => _noteDialog(existing: a, page: a.page),
+                      onNewNote: (pos) => _noteDialog(pos: pos, page: page.pageNumber),
+                      onContextMenu: _annotationMenu,
+                    ),
+                  ],
+                ),
+              );
 
     const dur = Duration(milliseconds: 220);
     final ready = _bytes != null && _error == null;
-    return Scaffold(
-      // Nothing resizes the viewer – not the keyboard (the note dialog's
-      // keyboard made pdfrx re-fit the page) and not the bars.
-      resizeToAvoidBottomInset: false,
-      body: Stack(children: [
-        Positioned.fill(
-          child: ready ? Opacity(opacity: _positioned ? 1 : 0, child: body) : SafeArea(child: body),
-        ),
-        if (ready)
-          // Draggable scrollbar thumb with the page number. It lives outside
-          // the viewer so its track can stay between the floating bars.
-          Positioned.fill(
-            child: _PageThumb(
-              controller: _controller,
-              top: (_chrome ? _barTop ?? 0 : MediaQuery.paddingOf(context).top) + 8,
-              bottom: (_chrome ? _barBottom ?? 0 : MediaQuery.paddingOf(context).bottom) + 8,
-            ),
-          ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: IgnorePointer(
-            ignoring: !_chrome,
-            child: AnimatedSlide(
-              duration: dur,
-              curve: Curves.easeOut,
-              offset: _chrome ? Offset.zero : const Offset(0, -1),
-              child: appBar,
-            ),
-          ),
-        ),
-        if (ready)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: IgnorePointer(
-              ignoring: !_chrome,
-              child: AnimatedSlide(
-                duration: dur,
-                curve: Curves.easeOut,
-                offset: _chrome ? Offset.zero : const Offset(0, 1),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Padding(padding: const EdgeInsets.only(bottom: 8), child: _statusPill()),
-                  Material(color: Theme.of(context).colorScheme.surfaceContainer, child: _toolbar()),
-                ]),
-              ),
-            ),
-          ),
-      ]),
-    );
+    return CallbackShortcuts(
+        bindings: _shortcuts,
+        child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              // Nothing resizes the viewer – not the keyboard (the note dialog's
+              // keyboard made pdfrx re-fit the page) and not the bars.
+              resizeToAvoidBottomInset: false,
+              body: Stack(children: [
+                Positioned.fill(
+                  // Own layer: the bars, pill and page thumb update while scrolling
+                  // and must not make the viewer repaint (and vice versa).
+                  child: RepaintBoundary(
+                    child: ready ? Opacity(opacity: _positioned ? 1 : 0, child: body) : SafeArea(child: body),
+                  ),
+                ),
+                if (ready)
+                  // Draggable scrollbar thumb with the page number. It lives outside
+                  // the viewer so its track can stay between the floating bars.
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: _PageThumb(
+                        controller: _controller,
+                        top: (_chrome ? _barTop ?? 0 : MediaQuery.paddingOf(context).top) + 8,
+                        bottom: (_chrome ? _barBottom ?? 0 : MediaQuery.paddingOf(context).bottom) + 8,
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    ignoring: !_chrome,
+                    child: AnimatedSlide(
+                      duration: dur,
+                      curve: Curves.easeOut,
+                      offset: _chrome ? Offset.zero : const Offset(0, -1),
+                      child: appBar,
+                    ),
+                  ),
+                ),
+                if (ready)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      ignoring: !_chrome,
+                      child: AnimatedSlide(
+                        duration: dur,
+                        curve: Curves.easeOut,
+                        offset: _chrome ? Offset.zero : const Offset(0, 1),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Padding(padding: const EdgeInsets.only(bottom: 8), child: _statusPill()),
+                          Material(color: Theme.of(context).colorScheme.surfaceContainer, child: _toolbar()),
+                        ]),
+                      ),
+                    ),
+                  ),
+              ]),
+            )));
   }
 
   /// "3 / 12 · 86%": tap the page part to jump to a page, the zoom part for
@@ -495,6 +628,7 @@ class _ReaderPageState extends State<ReaderPage> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         InkWell(
           onTap: _goToPageDialog,
+          mouseCursor: SystemMouseCursors.click,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
             child: ValueListenableBuilder<int>(
@@ -549,9 +683,13 @@ class _ReaderPageState extends State<ReaderPage> {
     await _goToPage(n.clamp(1, total));
   }
 
-  Widget _swatch(Color c, {double size = 28}) {
+  /// Tooltip with the keyboard shortcut appended on desktop.
+  String _tip(String label, String keys) => kDesktop ? '$label ($keys)' : label;
+  String get _cmdLabel => defaultTargetPlatform == TargetPlatform.macOS ? '⌘' : 'Ctrl+';
+
+  Widget _swatch(Color c, {double size = 28, bool? selected}) {
     final scheme = Theme.of(context).colorScheme;
-    final selected = _color == c;
+    selected ??= _color == c;
     return Container(
       width: size,
       height: size,
@@ -566,19 +704,19 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Widget _toolbar() {
     final scheme = Theme.of(context).colorScheme;
-    Widget toolBtn(Tool t, IconData icon, String tip) => IconButton(
-          tooltip: tip,
+    Widget toolBtn(Tool t, IconData icon, String tip, String key) => IconButton(
+          tooltip: _tip(tip, key),
           isSelected: _tool == t,
           icon: Icon(icon),
           style: IconButton.styleFrom(backgroundColor: _tool == t ? scheme.primaryContainer : null),
-          onPressed: () => setState(() => _tool = t),
+          onPressed: () => _setTool(t),
         );
     final tools = [
-      toolBtn(Tool.pan, Icons.pan_tool_outlined, 'Navigate'),
-      toolBtn(Tool.highlight, Icons.highlight, 'Highlight (drag)'),
-      toolBtn(Tool.ink, Icons.draw_outlined, 'Pen'),
-      toolBtn(Tool.note, Icons.sticky_note_2_outlined, 'Note (tap)'),
-      toolBtn(Tool.eraser, Icons.auto_fix_normal_outlined, 'Eraser'),
+      toolBtn(Tool.pan, Icons.pan_tool_outlined, 'Navigate', 'V'),
+      toolBtn(Tool.highlight, Icons.highlight, 'Highlight – drag a box', 'H'),
+      toolBtn(Tool.ink, Icons.draw_outlined, 'Pen', 'P'),
+      toolBtn(Tool.note, Icons.sticky_note_2_outlined, kDesktop ? 'Note – click' : 'Note – tap', 'N'),
+      toolBtn(Tool.eraser, Icons.auto_fix_normal_outlined, 'Eraser', 'E'),
     ];
     return SafeArea(
       child: Padding(

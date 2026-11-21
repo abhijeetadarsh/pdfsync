@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:sembast/sembast.dart';
 
+import 'perf.dart';
 import 'sync/api_client.dart';
 import 'sync/local_store.dart';
 import 'sync/platform/db_io.dart' if (dart.library.js_interop) 'sync/platform/db_web.dart' as platform;
@@ -14,6 +15,7 @@ import 'ui/login_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  startPerfLog();
   pdfrxFlutterInitialize(); // we open PdfDocument directly (page counts) before any viewer exists
   runApp(const PdfSyncApp());
 }

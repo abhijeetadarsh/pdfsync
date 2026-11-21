@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Install the debug APK on every connected device without touching them.
+# Install the APK on every connected device without touching them.
 # ColorOS/OxygenOS phones block `adb install` behind a "Continue installation"
 # screen; this script finds that button with uiautomator and taps it.
 set -u
-APK=${1:-"$(dirname "$0")/../client/build/app/outputs/flutter-apk/app-debug.apk"}
+# Default: the profile build (release speed; the debug build is far too slow
+# to judge smoothness). Pass another APK path to install that instead.
+APK=${1:-"$(dirname "$0")/../client/build/app/outputs/flutter-apk/app-profile.apk"}
 PKG=io.pdfsync.pdfsync
 tap_prompt() { # serial
   local d=$1

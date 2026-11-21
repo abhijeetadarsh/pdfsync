@@ -18,6 +18,13 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+// Release builds run "lintVital" on every plugin, and lint crashes on
+// url_launcher_android (NoSuchMethodError in its Java doc parser), which fails
+// `flutter build apk --release`. Lint is not part of our checks (we use
+// `flutter analyze`), so skip that task.
+subprojects {
+    tasks.matching { it.name.startsWith("lintVital") }.configureEach { enabled = false }
+}
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
