@@ -407,3 +407,30 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   failed to extract it ("Artifact download failed after 5 retries").
 - Fix: the release job downloads only the `android`, `linux` and `windows`
   artifacts, and the server job sets `DOCKER_BUILD_RECORD_UPLOAD=false`.
+
+## 2026-11-21 – "Cannot reach server: Failed host lookup" on the phone (branch `fix-android-internet-permission`)
+
+- Symptom (phone, screenshot): signing in against `https://pdfsync.tomiarb.com`
+  showed `SocketException: Failed host lookup ... No address associated with
+  hostname, errno = 7`.
+- Ruled out the server and DNS: on the VM the container is up and Caddy proxies
+  `pdfsync.tomiarb.com` → `127.0.0.1:8000`; `/healthz` returns 200 over HTTPS;
+  the A record resolves on 1.1.1.1 and 8.8.8.8; `adb shell ping` on the phone
+  resolved the name too. So only the app could not resolve it.
+- Cause: `android.permission.INTERNET` was declared only in
+  `android/app/src/debug` and `profile` manifests (Flutter's template), not in
+  `main`. A release build therefore has no network permission, and Android
+  reports that as a host-lookup failure (errno 7). The dev builds hid it.
+  `dumpsys package` showed no INTERNET in the installed app.
+- Fix: added the permission to `client/android/app/src/main/AndroidManifest.xml`.
+- Install gotchas: the phone had versionCode 2 from another source, so the
+  `+1` build was rejected (`INSTALL_FAILED_VERSION_DOWNGRADE`), and a
+  `--build-number 10` build was rejected as well (`UPDATE_INCOMPATIBLE`, different
+  signing key). Uninstalled the old app (it was on the login screen, no data)
+  and installed the new one.
+- Verified on the phone (portrait): `dumpsys` lists INTERNET granted; signing in
+  with a bogus account now returns the server's `invalid email or password`
+  instead of the lookup error. Nothing was created on the server.
+- Open: tablet not connected this session, so not re-tested there; landscape
+  not checked (no UI change). Real sign-in with the user's account not done.
+  Release builds still need a higher `+N` build number than what is installed.
