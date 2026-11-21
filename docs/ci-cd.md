@@ -51,6 +51,11 @@ What the script also does:
 - Replaces a container named `pdfsync` that was started by hand with
   `docker run`.
 - Waits until `/healthz` answers.
+- Runs the server unprivileged: as the fixed non-root user 65532, with all
+  Linux capabilities dropped, `no-new-privileges`, and a read-only root
+  filesystem (it writes only to the `/data` volume and an in-memory `/tmp`).
+  The script itself runs no root containers. If an old volume is owned by root,
+  it prints the one `sudo chown` command to fix it instead of fixing it itself.
 
 The image is a multi-platform image (linux/amd64 and linux/arm64), so Docker
 pulls the variant that matches the VM. 32-bit ARM is not built. Data is in the

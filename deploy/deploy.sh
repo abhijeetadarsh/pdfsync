@@ -102,6 +102,14 @@ services:
   server:
     image: ghcr.io/abhijeetadarsh/pdfsync-server:${PDFSYNC_TAG:-latest}
     restart: unless-stopped
+    # Unprivileged and locked down: fixed non-root user (distroless
+    # "nonroot"), no Linux capabilities, no privilege escalation, read-only
+    # root filesystem. It only writes to the /data volume (and /tmp, in RAM).
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
     # Appended to the image's entrypoint (-addr :8080 -data /data).
     command: ["-max-upload-mb", "${PDFSYNC_MAX_UPLOAD_MB:-512}"]
     ports:
@@ -157,18 +165,10 @@ if ! $DOCKER pull -q "$IMAGE:$PDFSYNC_TAG" >/dev/null 2>&1; then
 fi
 
 say "Starting pdfsync ($IMAGE:$PDFSYNC_TAG on $PDFSYNC_LISTEN:$PDFSYNC_PORT${PDFSYNC_NETWORK:+, network $PDFSYNC_NETWORK})"
-# The server runs as the distroless "nonroot" user (uid 65532). A volume
-# created before the image shipped a nonroot-owned /data (or by a manual
-# `docker run`) is owned by root, and the server then fails with
-# "mkdir /data/blobs: permission denied". Create the container and volume
-# without starting them, then fix the owner if needed.
-$DOCKER compose up --no-start --remove-orphans
-$DOCKER run --rm -v pdfsync-data:/data busybox:1.37 \
-  sh -c '[ "$(stat -c %u /data)" = 65532 ] || { echo "==> Fixing data volume owner"; chown -R 65532:65532 /data; }'
 $DOCKER compose up -d --remove-orphans
 # A container that was crash-looping sits in Docker's restart back-off (up to
 # a minute between tries) and `up -d` leaves it there; restart it so it starts
-# now, with the fixed volume and the current settings.
+# now with the current settings.
 $DOCKER compose restart server >/dev/null
 
 # --- health check -----------------------------------------------------------
@@ -193,4 +193,9 @@ for _ in $(seq 1 60); do
 done
 $DOCKER compose ps
 $DOCKER compose logs --tail 50 server
+if $DOCKER compose logs --tail 5 server 2>&1 | grep -q "permission denied"; then
+  echo "The data volume is not writable by the server's user (uid 65532). It was" >&2
+  echo "probably created by an older image. Fix it once, then re-run deploy.sh:" >&2
+  echo "  sudo chown -R 65532:65532 \"\$(docker volume inspect -f '{{.Mountpoint}}' pdfsync-data)\"" >&2
+fi
 die "the server did not become healthy within 60 s (logs above)"

@@ -438,3 +438,10 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   `compose up -d` does not restart an existing container, so it stayed there past the script's
   30 s health check. deploy.sh now runs `compose restart server` after the fix
   and waits up to 60 s.
+- The server did start after the owner fix (`17:23:49 pdfsync server …` in
+  the user's log), but the user does not want the deploy to run anything as
+  root. Removed the busybox chown step: the Dockerfile fix makes new volumes
+  correct, and for an old root-owned volume the script now prints the
+  `sudo chown` command to run. Hardened the service: `user: 65532:65532`,
+  `cap_drop: ALL`, `no-new-privileges`, `read_only` with a tmpfs `/tmp` (the
+  server writes only under /data; SQLite may use /tmp).
