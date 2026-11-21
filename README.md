@@ -49,6 +49,8 @@ Sign in with the server URL, for example `http://<your-LAN-ip>:8080` from a phon
 
 **Tools:** navigate · highlight (drag a box) · pen · sticky note (tap) · eraser (tap or drag over an annotation) · 5 colours. The last-read page syncs as well.
 
+**Input:** on desktop the bars stay visible, the mouse wheel scrolls in every tool, Ctrl+wheel zooms, middle-drag pans, right-click edits or deletes an annotation, and keyboard shortcuts are shown in the tooltips. On touch devices a stylus draws and fingers scroll; without a stylus, one finger draws and two navigate. See [docs/input-model.md](docs/input-model.md).
+
 ## Tests
 
 ```bash
@@ -73,3 +75,5 @@ Record kinds: `document`, `annotation`, `readstate`, `folder` (reserved for fold
 - Export a PDF with the annotations written in as standard PDF annotations, so they show in other readers.
 - Resumable chunked uploads for very large files. Postgres and S3 storage for running several servers.
 - Sharing documents with other users. The record model supports it: add an ACL on `docId`.
+
+**Releases:** every push to `main` runs the tests, publishes the server image to GHCR and attaches a signed Android APK, a Linux bundle and a Windows bundle to a GitHub Release. See [docs/ci-cd.md](docs/ci-cd.md).
