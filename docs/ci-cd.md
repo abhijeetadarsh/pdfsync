@@ -38,12 +38,12 @@ of the native release jobs and needs no Android signing secrets.
 
 ### One-time repository setup
 
-GitHub Pages requires a supported paid plan for private repositories, or a public
-repository. Enabling Pages for this private repository was rejected by GitHub on
-2026-11-22 because the current plan does not support it. Upgrade the account plan
-or explicitly choose to make the repository public before enabling Pages.
+GitHub Pages is enabled for this public repository with GitHub Actions as the
+publishing source, and HTTPS is enforced. No additional Pages setup is needed here.
+For another repository, Pages requires a supported paid plan for private
+repositories, or a public repository.
 
-Once eligible, in **Settings → Pages → Build and deployment**, set **Source** to
+In **Settings → Pages → Build and deployment**, set **Source** to
 **GitHub Actions**, or run:
 
 ```sh
