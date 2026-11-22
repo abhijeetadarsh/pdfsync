@@ -1,0 +1,90 @@
+name: Web
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.50.0"
+
+jobs:
+  build:
+    name: Test and build web client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Build integration test server
+        working-directory: server
+        run: go build -o "$RUNNER_TEMP/pdfsync-server" .
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Analyze and test client
+        working-directory: client
+        env:
+          PDFSYNC_SERVER_BIN: ${{ runner.temp }}/pdfsync-server
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Read Pages configuration
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build release web client
+        working-directory: client
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+          IS_PRODUCTION: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        run: |
+          if [ "$IS_PRODUCTION" = "true" ]; then
+            base_href="${PAGES_BASE_PATH%/}/"
+          elif [ "$REPOSITORY_NAME" = "${GITHUB_REPOSITORY_OWNER}.github.io" ]; then
+            base_href="/"
+          else
+            base_href="/$REPOSITORY_NAME/"
+          fi
+          flutter build web --release --base-href "$base_href"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/build/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

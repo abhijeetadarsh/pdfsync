@@ -77,3 +77,7 @@ Record kinds: `document`, `annotation`, `readstate`, `folder` (reserved for fold
 - Sharing documents with other users. The record model supports it: add an ACL on `docId`.
 
 **Releases:** every push to `main` runs the tests, publishes the server image to GHCR and attaches a signed Android APK, a Linux bundle and a Windows bundle to a GitHub Release. See [docs/ci-cd.md](docs/ci-cd.md).
+
+**Web:** the Web workflow tests and builds pull requests, then deploys the Flutter
+client to GitHub Pages on pushes to `main` once Pages is enabled. The Go backend
+stays on your own HTTPS server. See [web hosting setup](docs/ci-cd.md#web-client-on-github-pages).
