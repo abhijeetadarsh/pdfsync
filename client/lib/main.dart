@@ -8,9 +8,11 @@ import 'package:sembast/sembast.dart';
 import 'perf.dart';
 import 'sync/api_client.dart';
 import 'sync/local_store.dart';
-import 'sync/platform/db_io.dart' if (dart.library.js_interop) 'sync/platform/db_web.dart' as platform;
+import 'sync/platform/db_io.dart'
+    if (dart.library.js_interop) 'sync/platform/db_web.dart' as platform;
 import 'sync/sync_engine.dart';
 import 'ui/library_page.dart';
+import 'ui/app_theme.dart';
 import 'ui/login_page.dart';
 
 Future<void> main() async {
@@ -33,6 +35,7 @@ class _PdfSyncAppState extends State<PdfSyncApp> with WidgetsBindingObserver {
   String? _email;
   String? _lastServer;
   bool _loading = true;
+  ThemeMode _themeMode = ThemeMode.dark;
 
   @override
   void initState() {
@@ -57,17 +60,25 @@ class _PdfSyncAppState extends State<PdfSyncApp> with WidgetsBindingObserver {
 
   Future<void> _restore() async {
     _sessionDb = await platform.openDb('pdfsync_session.db');
+    final appearance =
+        await _session.record('appearance').get(_sessionDb!) as String?;
+    _themeMode = ThemeMode.values
+        .firstWhere((m) => m.name == appearance, orElse: () => ThemeMode.dark);
     final s = await _session.record('current').get(_sessionDb!) as Map?;
-    _lastServer = await _session.record('lastServer').get(_sessionDb!) as String?;
+    _lastServer =
+        await _session.record('lastServer').get(_sessionDb!) as String?;
     if (s != null) {
-      await _startEngine(s['server'] as String, s['email'] as String, s['token'] as String, s['userId'] as String);
+      await _startEngine(s['server'] as String, s['email'] as String,
+          s['token'] as String, s['userId'] as String);
     }
     setState(() => _loading = false);
   }
 
-  Future<void> _startEngine(String server, String email, String token, String userId) async {
+  Future<void> _startEngine(
+      String server, String email, String token, String userId) async {
     // One local DB per account+server, so switching accounts never mixes data.
-    final key = '${userId}_${sha1.convert(utf8.encode(server)).toString().substring(0, 8)}';
+    final key =
+        '${userId}_${sha1.convert(utf8.encode(server)).toString().substring(0, 8)}';
     final store = await LocalStore.open(key);
     final engine = SyncEngine(store, ApiClient(server, token: token))..start();
     setState(() {
@@ -76,8 +87,10 @@ class _PdfSyncAppState extends State<PdfSyncApp> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _signedIn(String server, String email, String token, String userId) async {
-    await _session.record('current').put(_sessionDb!, {'server': server, 'email': email, 'token': token, 'userId': userId});
+  Future<void> _signedIn(
+      String server, String email, String token, String userId) async {
+    await _session.record('current').put(_sessionDb!,
+        {'server': server, 'email': email, 'token': token, 'userId': userId});
     await _session.record('lastServer').put(_sessionDb!, server);
     _lastServer = server;
     await _startEngine(server, email, token, userId);
@@ -96,18 +109,29 @@ class _PdfSyncAppState extends State<PdfSyncApp> with WidgetsBindingObserver {
     await _session.record('current').delete(_sessionDb!);
   }
 
+  void _setTheme(ThemeMode mode) {
+    setState(() => _themeMode = mode);
+    _session.record('appearance').put(_sessionDb!, mode.name);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'PDF Sync',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-      darkTheme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true, brightness: Brightness.dark),
+      theme: AppTheme.build(Brightness.light),
+      darkTheme: AppTheme.build(Brightness.dark),
+      themeMode: _themeMode,
       home: _loading
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : _engine == null
               ? LoginPage(onSignedIn: _signedIn, initialServer: _lastServer)
-              : LibraryPage(engine: _engine!, email: _email ?? '', onLogout: _logout),
+              : LibraryPage(
+                  engine: _engine!,
+                  email: _email ?? '',
+                  onLogout: _logout,
+                  themeMode: _themeMode,
+                  onThemeChanged: _setTheme),
     );
   }
 }

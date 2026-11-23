@@ -11,8 +11,11 @@ import '../sync/record.dart';
 import '../sync/sync_engine.dart';
 import '../undo.dart';
 import 'annotation_layer.dart';
+import 'annotations_panel.dart';
+import 'app_theme.dart';
 import 'input_policy.dart';
 import 'reading_mode.dart';
+import 'responsive_pdf_sizing.dart';
 import 'scroll_feel.dart';
 import 'text_highlight.dart';
 
@@ -27,11 +30,11 @@ class ReaderPage extends StatefulWidget {
 
 class _ReaderPageState extends State<ReaderPage> {
   static const palette = [
-    Color(0xFFFFEB3B),
-    Color(0xFF4CAF50),
-    Color(0xFF2196F3),
-    Color(0xFFE91E63),
-    Color(0xFF212121),
+    AppTheme.yellow,
+    AppTheme.green,
+    AppTheme.blue,
+    AppTheme.pink,
+    AppTheme.lavender,
   ];
 
   Uint8List? _bytes;
@@ -55,12 +58,14 @@ class _ReaderPageState extends State<ReaderPage> {
   // toolbar and system bars; another tap brings them back. The bars float over
   // the page (they never resize the viewer), so toggling never re-zooms.
   bool _chrome = true;
+  bool _annotationsVisible = true;
 
   void _setChrome(bool visible) {
     // Desktop: the bars stay put – clicking around with a mouse shouldn't hide them.
     if (kDesktop || _chrome == visible) return;
     setState(() => _chrome = visible);
-    SystemChrome.setEnabledSystemUIMode(visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
+    SystemChrome.setEnabledSystemUIMode(
+        visible ? SystemUiMode.edgeToEdge : SystemUiMode.immersiveSticky);
     // The viewer itself never resizes (a resize makes pdfrx re-clamp and
     // re-zoom with its own rules). Instead, the scroll limits in _normalize
     // keep the page clear of the bars at the document's edges, in both states,
@@ -72,15 +77,23 @@ class _ReaderPageState extends State<ReaderPage> {
   /// toolbar's top edge – no overscroll, nothing tucked under a bar at the
   /// document's edges, and identical whether the bars are shown or hidden.
   /// Documents narrower/shorter than the view stay centred.
-  Matrix4 _normalize(Matrix4 m, Size view, PdfPageLayout layout, PdfViewerController? c) {
-    final z = (c != null && c.isReady) ? m.zoom.clamp(c.minScale, c.maxScale) : m.zoom;
-    final docW = layout.documentSize.width * z, docH = layout.documentSize.height * z;
+  Matrix4 _normalize(
+      Matrix4 m, Size view, PdfPageLayout layout, PdfViewerController? c) {
+    final z = (c != null && c.isReady)
+        ? m.zoom.clamp(c.minScale, c.maxScale)
+        : m.zoom;
+    final docW = layout.documentSize.width * z,
+        docH = layout.documentSize.height * z;
     var tx = m.storage[12] * (z / m.zoom), ty = m.storage[13] * (z / m.zoom);
     final top = _barTop ?? 0, bottom = _barBottom ?? 0;
 
-    tx = docW <= view.width ? (view.width - docW) / 2 : tx.clamp(view.width - docW, 0.0);
+    tx = docW <= view.width
+        ? (view.width - docW) / 2
+        : tx.clamp(view.width - docW, 0.0);
     final usable = view.height - top - bottom;
-    ty = docH <= usable ? top + (usable - docH) / 2 : ty.clamp(view.height - docH - bottom, top);
+    ty = docH <= usable
+        ? top + (usable - docH) / 2
+        : ty.clamp(view.height - docH - bottom, top);
 
     return Matrix4.identity()
       ..setEntry(0, 0, z)
@@ -141,7 +154,8 @@ class _ReaderPageState extends State<ReaderPage> {
     if (m != null) {
       await c.goTo(m);
     } else {
-      await c.setZoom(c.centerPosition, (z.percent! / 100).clamp(c.minScale, c.maxScale));
+      await c.setZoom(
+          c.centerPosition, (z.percent! / 100).clamp(c.minScale, c.maxScale));
     }
   }
 
@@ -154,21 +168,25 @@ class _ReaderPageState extends State<ReaderPage> {
     await widget.engine.store.setMeta('readingMode', m.name);
   }
 
-  late final AnnotationHistory _history = AnnotationHistory((id, data) => data == null
-      ? widget.engine.store.delete('annotation', id, docId: _docId)
-      : widget.engine.store.put('annotation', id, data, docId: _docId));
+  late final AnnotationHistory _history = AnnotationHistory((id, data) =>
+      data == null
+          ? widget.engine.store.delete('annotation', id, docId: _docId)
+          : widget.engine.store.put('annotation', id, data, docId: _docId));
 
   // All annotation edits go through the undo history.
-  Future<void> _create(Map<String, dynamic> data) => _history.run(AnnEdit(newId(), null, data));
+  Future<void> _create(Map<String, dynamic> data) =>
+      _history.run(AnnEdit(newId(), null, data));
   Future<void> _remove(Ann a) => _history.run(AnnEdit(a.id, Map.of(a.d), null));
-  Future<void> _update(Ann a, Map<String, dynamic> data) => _history.run(AnnEdit(a.id, Map.of(a.d), data));
+  Future<void> _update(Ann a, Map<String, dynamic> data) =>
+      _history.run(AnnEdit(a.id, Map.of(a.d), data));
 
   /// Context-menu action for a text selection: highlight it in the current colour.
   Future<void> _highlightSelection(PdfTextSelectionDelegate sel) async {
     final doc = _document;
     if (doc == null || !sel.hasSelectedText) return;
     final ranges = await sel.getSelectedTextRanges();
-    for (final data in highlightsFromSelection(ranges, doc.pages, color: _color.toARGB32())) {
+    for (final data in highlightsFromSelection(ranges, doc.pages,
+        color: _color.toARGB32())) {
       await _create(data);
     }
     await sel.clearTextSelection();
@@ -212,7 +230,8 @@ class _ReaderPageState extends State<ReaderPage> {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final choice = await showMenu<Object>(
       context: context,
-      position: RelativeRect.fromRect(global & Size.zero, Offset.zero & overlay.size),
+      position:
+          RelativeRect.fromRect(global & Size.zero, Offset.zero & overlay.size),
       items: [
         PopupMenuItem<Object>(
           enabled: false,
@@ -224,13 +243,16 @@ class _ReaderPageState extends State<ReaderPage> {
                   child: InkResponse(
                     onTap: () => Navigator.pop(ctx, col),
                     radius: 18,
-                    child: _swatch(col, size: 24, selected: a.color.toARGB32() == col.toARGB32()),
+                    child: _swatch(col,
+                        size: 24,
+                        selected: a.color.toARGB32() == col.toARGB32()),
                   ),
                 ),
             ]),
           ),
         ),
-        if (a.type == 'note') const PopupMenuItem(value: 'edit', child: Text('Edit note…')),
+        if (a.type == 'note')
+          const PopupMenuItem(value: 'edit', child: Text('Edit note…')),
         const PopupMenuItem(value: 'delete', child: Text('Delete')),
       ],
     );
@@ -251,37 +273,40 @@ class _ReaderPageState extends State<ReaderPage> {
     SingleActivator k(LogicalKeyboardKey key, {bool shift = false}) =>
         SingleActivator(key, control: !cmd, meta: cmd, shift: shift);
     return {
-      k(LogicalKeyboardKey.keyZ): () => _history.canUndo ? _history.undo() : null,
-      k(LogicalKeyboardKey.keyZ, shift: true): () => _history.canRedo ? _history.redo() : null,
-      k(LogicalKeyboardKey.keyY): () => _history.canRedo ? _history.redo() : null,
+      k(LogicalKeyboardKey.keyZ): () =>
+          _history.canUndo ? _history.undo() : null,
+      k(LogicalKeyboardKey.keyZ, shift: true): () =>
+          _history.canRedo ? _history.redo() : null,
+      k(LogicalKeyboardKey.keyY): () =>
+          _history.canRedo ? _history.redo() : null,
       k(LogicalKeyboardKey.keyG): _goToPageDialog,
       k(LogicalKeyboardKey.digit0): _fitWidth,
-      const SingleActivator(LogicalKeyboardKey.escape): () => _setTool(Tool.pan),
+      const SingleActivator(LogicalKeyboardKey.escape): () =>
+          _setTool(Tool.pan),
       const SingleActivator(LogicalKeyboardKey.keyV): () => _setTool(Tool.pan),
-      const SingleActivator(LogicalKeyboardKey.keyH): () => _setTool(Tool.highlight),
+      const SingleActivator(LogicalKeyboardKey.keyH): () =>
+          _setTool(Tool.highlight),
       const SingleActivator(LogicalKeyboardKey.keyP): () => _setTool(Tool.ink),
       const SingleActivator(LogicalKeyboardKey.keyN): () => _setTool(Tool.note),
-      const SingleActivator(LogicalKeyboardKey.keyE): () => _setTool(Tool.eraser),
+      const SingleActivator(LogicalKeyboardKey.keyE): () =>
+          _setTool(Tool.eraser),
     };
   }
 
   /// Keep the same part of the document in view across rotation / window
   /// resizes, scaling the zoom with the view width, so a page that fit the
   /// width in portrait still fits it in landscape (and vice versa).
-  void _onViewSizeChanged(Size viewSize, Size? oldViewSize, PdfViewerController controller) {
+  void _onViewSizeChanged(
+      Size viewSize, Size? oldViewSize, PdfViewerController controller) {
     if (oldViewSize == null || oldViewSize.width <= 0) return;
     if ((viewSize.width - oldViewSize.width).abs() < 1) return;
-    // Rotation: system bar sizes differ, re-measure on the next build.
-    if (_chrome) _barTop = _barBottom = null;
-    final center = controller.value.calcPosition(oldViewSize);
-    final zoom =
-        (controller.currentZoom * viewSize.width / oldViewSize.width).clamp(controller.minScale, controller.maxScale);
-    // Not synchronously: this can be called during build.
-    Future.delayed(const Duration(milliseconds: 50), () {
-      if (!mounted || !controller.isReady) return;
-      controller.goTo(controller.makeMatrixInSafeRange(controller.calcMatrixFor(center, zoom: zoom)),
-          duration: Duration.zero);
-    });
+    // Zoom/position are handled once by ResponsivePdfSizing from the old
+    // layout snapshot. Refresh only chrome bounds here; no delayed transform
+    // may overwrite a more recent resize or a user gesture.
+    final pad = MediaQuery.paddingOf(context);
+    final expanded = MediaQuery.sizeOf(context).width >= 900;
+    _barTop = pad.top + kToolbarHeight + (expanded ? 56 : 0);
+    _barBottom = pad.bottom + (expanded ? 56 : 100);
   }
 
   String get _docId => widget.doc.id;
@@ -310,9 +335,12 @@ class _ReaderPageState extends State<ReaderPage> {
       _initialPage = rs?.data['page'] as int?;
       // Opening counts as reading: refresh the readstate so the library sorts
       // this document first on every device.
-      widget.engine.store.put('readstate', _docId, {'page': _initialPage ?? 1}, docId: _docId);
-      _mode = ReadingMode.byName(await widget.engine.store.getMeta<String>('readingMode'));
-      final bytes = await widget.engine.loadPdf(widget.doc.data['sha256'] as String,
+      widget.engine.store
+          .put('readstate', _docId, {'page': _initialPage ?? 1}, docId: _docId);
+      _mode = ReadingMode.byName(
+          await widget.engine.store.getMeta<String>('readingMode'));
+      final bytes = await widget.engine.loadPdf(
+          widget.doc.data['sha256'] as String,
           onProgress: (p) => mounted ? setState(() => _progress = p) : null);
       if (mounted) setState(() => _bytes = bytes);
     } catch (e) {
@@ -341,22 +369,30 @@ class _ReaderPageState extends State<ReaderPage> {
     // Reading position syncs too ("continue where you left off" on any device),
     // but debounced so scrolling doesn't spam records.
     _pageSave = Timer(const Duration(seconds: 2), () {
-      widget.engine.store.put('readstate', _docId, {'page': page}, docId: _docId);
+      widget.engine.store
+          .put('readstate', _docId, {'page': page}, docId: _docId);
     });
   }
 
-  Future<void> _noteDialog({Ann? existing, Offset? pos, required int page}) async {
+  Future<void> _noteDialog(
+      {Ann? existing, Offset? pos, required int page}) async {
     final ctl = TextEditingController(text: existing?.text ?? '');
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(existing == null ? 'New note' : 'Note'),
-        content: TextField(controller: ctl, autofocus: true, maxLines: 6, minLines: 3),
+        content: TextField(
+            controller: ctl, autofocus: true, maxLines: 6, minLines: 3),
         actions: [
           if (existing != null)
-            TextButton(onPressed: () => Navigator.pop(ctx, '\u0000delete'), child: const Text('Delete')),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Save')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, '\u0000delete'),
+                child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctl.text),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -364,7 +400,9 @@ class _ReaderPageState extends State<ReaderPage> {
     if (result == '\u0000delete') {
       await _remove(existing!);
     } else if (existing != null) {
-      if (result != existing.text) await _update(existing, {...existing.d, 'text': result});
+      if (result != existing.text) {
+        await _update(existing, {...existing.d, 'text': result});
+      }
     } else if (result.trim().isNotEmpty) {
       await _create({
         'page': page,
@@ -379,20 +417,23 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   Widget build(BuildContext context) {
     final drawing = _tool != Tool.pan;
+    final expanded = MediaQuery.sizeOf(context).width >= 900;
     if (_chrome) {
       final pad = MediaQuery.paddingOf(context);
-      _barTop ??= pad.top + kToolbarHeight;
+      _barTop ??= pad.top + kToolbarHeight + (expanded ? 56 : 0);
       // Toolbar (48 + 2*4 padding) plus the page/zoom pill above it.
-      _barBottom ??= pad.bottom + 56 + 44;
+      _barBottom ??= pad.bottom + (expanded ? 56 : 100);
     }
     final appBar = AppBar(
-      title: Text(widget.doc.data['title'] as String? ?? 'Document', overflow: TextOverflow.ellipsis),
+      title: Text(widget.doc.data['title'] as String? ?? 'Document',
+          maxLines: 2, overflow: TextOverflow.ellipsis),
       actions: [
         // Undo/redo live in the app bar: the bottom toolbar is already full
         // on a phone in portrait.
         ListenableBuilder(
           listenable: _history,
-          builder: (context, _) => Row(mainAxisSize: MainAxisSize.min, children: [
+          builder: (context, _) =>
+              Row(mainAxisSize: MainAxisSize.min, children: [
             IconButton(
               tooltip: _tip('Undo', '${_cmdLabel}Z'),
               icon: const Icon(Icons.undo),
@@ -422,27 +463,43 @@ class _ReaderPageState extends State<ReaderPage> {
                     decoration: BoxDecoration(
                       color: m.paperColor,
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      border: Border.all(
+                          color: Theme.of(context).colorScheme.outline),
                     ),
-                    child: Text('Aa', style: TextStyle(color: m.inkColor, fontWeight: FontWeight.w600)),
+                    child: Text('Aa',
+                        style: TextStyle(
+                            color: m.inkColor, fontWeight: FontWeight.w600)),
                   ),
                   const SizedBox(width: 12),
                   Text(m.label),
-                  if (m == _mode) ...[const Spacer(), const Icon(Icons.check, size: 18)],
+                  if (m == _mode) ...[
+                    const Spacer(),
+                    const Icon(Icons.check, size: 18)
+                  ],
                 ]),
               ),
           ],
         ),
-        SyncIndicator(engine: widget.engine),
+        IconButton(
+          tooltip: 'Annotations',
+          isSelected: expanded && _annotationsVisible,
+          icon: const Icon(Icons.notes_outlined),
+          onPressed: _bytes == null ? null : () => _showAnnotations(expanded),
+        ),
         const SizedBox(width: 8),
       ],
     );
     final body = _error != null
-        ? Center(child: Text('Could not open PDF:\n$_error', textAlign: TextAlign.center))
+        ? Center(
+            child: Text('Could not open PDF:\n$_error',
+                textAlign: TextAlign.center))
         : _bytes == null
             ? Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                SizedBox(width: 200, child: LinearProgressIndicator(value: _progress > 0 ? _progress : null)),
+                SizedBox(
+                    width: 200,
+                    child: LinearProgressIndicator(
+                        value: _progress > 0 ? _progress : null)),
                 const SizedBox(height: 12),
                 const Text('Downloading…'),
               ]))
@@ -454,7 +511,11 @@ class _ReaderPageState extends State<ReaderPage> {
                   // Single tap with the hand tool toggles the bars (touch
                   // only; on desktop they stay). Double tap keeps pdfrx's zoom.
                   onGeneralTap: (context, controller, details) {
-                    if (kDesktop || details.type != PdfViewerGeneralTapType.tap || _tool != Tool.pan) return false;
+                    if (kDesktop ||
+                        details.type != PdfViewerGeneralTapType.tap ||
+                        _tool != Tool.pan) {
+                      return false;
+                    }
                     _setChrome(!_chrome);
                     return true;
                   },
@@ -474,7 +535,8 @@ class _ReaderPageState extends State<ReaderPage> {
                   // like native scrolling; pages pre-rendered two screens
                   // ahead. Values and reasoning in scroll_feel.dart.
                   scrollByMouseWheel: kWheelStep,
-                  interactionDelegateProvider: const AcceleratedWheelScrollProvider(),
+                  interactionDelegateProvider:
+                      const AcceleratedWheelScrollProvider(),
                   interactionEndFrictionCoefficient: kFlingDrag,
                   verticalCacheExtent: kCacheExtent,
                   horizontalCacheExtent: kCacheExtent,
@@ -484,7 +546,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   // to the GPU – at fit-width (3.1–3.7x on a laptop or the tablet)
                   // that was the main cause of scroll jank. One full image per page is
                   // cached and simply moved instead. See docs/performance.md.
-                  sizeDelegateProvider: const PdfViewerSizeDelegateProviderLegacy(onePassRenderingScaleThreshold: 4.0),
+                  sizeDelegateProvider: const ResponsivePdfSizing(),
                   // Room for ~10 such pages (~21 MB each) so scrolling back and
                   // forth doesn't evict and re-render them.
                   maxImageBytesCachedOnMemory: 256 * 1024 * 1024,
@@ -494,9 +556,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   pageImageColorFilter: _mode.colorFilter,
                   // The gutter around pages follows the app theme instead of
                   // pdfrx's default mid-grey.
-                  backgroundColor: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF26262B)
-                      : const Color(0xFFDADADF),
+                  backgroundColor: Theme.of(context).colorScheme.surface,
                   // Long-press (touch) or drag (mouse) selects text with the
                   // hand tool; the menu gets a "Highlight" action next to
                   // Copy. Off while drawing so a pen stroke never selects.
@@ -527,7 +587,10 @@ class _ReaderPageState extends State<ReaderPage> {
                     // until then so it never visibly jumps.
                     Future.delayed(const Duration(milliseconds: 150), () async {
                       if (!mounted) return;
-                      await _goToPage(p != null && p >= 1 && p <= document.pages.length ? p : 1);
+                      await _goToPage(
+                          p != null && p >= 1 && p <= document.pages.length
+                              ? p
+                              : 1);
                       if (mounted) setState(() => _positioned = true);
                     });
                   },
@@ -542,14 +605,17 @@ class _ReaderPageState extends State<ReaderPage> {
                       onCreate: _create,
                       onDelete: _remove,
                       onNoteTap: (a) => _noteDialog(existing: a, page: a.page),
-                      onNewNote: (pos) => _noteDialog(pos: pos, page: page.pageNumber),
+                      onNewNote: (pos) =>
+                          _noteDialog(pos: pos, page: page.pageNumber),
                       onContextMenu: _annotationMenu,
                     ),
                   ],
                 ),
               );
 
-    const dur = Duration(milliseconds: 220);
+    final dur = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
     final ready = _bytes != null && _error == null;
     return CallbackShortcuts(
         bindings: _shortcuts,
@@ -559,71 +625,145 @@ class _ReaderPageState extends State<ReaderPage> {
               // Nothing resizes the viewer – not the keyboard (the note dialog's
               // keyboard made pdfrx re-fit the page) and not the bars.
               resizeToAvoidBottomInset: false,
-              body: Stack(children: [
-                Positioned.fill(
-                  // Own layer: the bars, pill and page thumb update while scrolling
-                  // and must not make the viewer repaint (and vice versa).
-                  child: RepaintBoundary(
-                    child: ready ? Opacity(opacity: _positioned ? 1 : 0, child: body) : SafeArea(child: body),
-                  ),
-                ),
-                if (ready)
-                  // Draggable scrollbar thumb with the page number. It lives outside
-                  // the viewer so its track can stay between the floating bars.
+              body: Row(children: [
+                Expanded(
+                    child: Stack(children: [
                   Positioned.fill(
+                    // Own layer: the bars, pill and page thumb update while scrolling
+                    // and must not make the viewer repaint (and vice versa).
                     child: RepaintBoundary(
-                      child: _PageThumb(
-                        controller: _controller,
-                        top: (_chrome ? _barTop ?? 0 : MediaQuery.paddingOf(context).top) + 8,
-                        bottom: (_chrome ? _barBottom ?? 0 : MediaQuery.paddingOf(context).bottom) + 8,
+                      child: ready
+                          ? Opacity(opacity: _positioned ? 1 : 0, child: body)
+                          : SafeArea(child: body),
+                    ),
+                  ),
+                  if (ready)
+                    // Draggable scrollbar thumb with the page number. It lives outside
+                    // the viewer so its track can stay between the floating bars.
+                    Positioned.fill(
+                      child: RepaintBoundary(
+                        child: _PageThumb(
+                          controller: _controller,
+                          top: (_chrome
+                                  ? _barTop ?? 0
+                                  : MediaQuery.paddingOf(context).top) +
+                              8,
+                          bottom: (_chrome
+                                  ? _barBottom ?? 0
+                                  : MediaQuery.paddingOf(context).bottom) +
+                              8,
+                        ),
                       ),
                     ),
-                  ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: IgnorePointer(
-                    ignoring: !_chrome,
-                    child: AnimatedSlide(
-                      duration: dur,
-                      curve: Curves.easeOut,
-                      offset: _chrome ? Offset.zero : const Offset(0, -1),
-                      child: appBar,
-                    ),
-                  ),
-                ),
-                if (ready)
                   Positioned(
+                    top: 0,
                     left: 0,
                     right: 0,
-                    bottom: 0,
                     child: IgnorePointer(
                       ignoring: !_chrome,
                       child: AnimatedSlide(
                         duration: dur,
                         curve: Curves.easeOut,
-                        offset: _chrome ? Offset.zero : const Offset(0, 1),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          Padding(padding: const EdgeInsets.only(bottom: 8), child: _statusPill()),
-                          Material(color: Theme.of(context).colorScheme.surfaceContainer, child: _toolbar()),
+                        offset: _chrome ? Offset.zero : const Offset(0, -1),
+                        child:
+                            Column(mainAxisSize: MainAxisSize.min, children: [
+                          appBar,
+                          if (expanded && ready)
+                            Material(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainer,
+                                child: _toolbar(expanded: true)),
                         ]),
                       ),
                     ),
                   ),
+                  if (ready)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: IgnorePointer(
+                        ignoring: !_chrome,
+                        child: AnimatedSlide(
+                          duration: dur,
+                          curve: Curves.easeOut,
+                          offset: _chrome ? Offset.zero : const Offset(0, 1),
+                          child:
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                            Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _statusPill()),
+                            if (!expanded)
+                              Material(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainer,
+                                  child: _toolbar()),
+                          ]),
+                        ),
+                      ),
+                    ),
+                ])),
+                if (expanded && _annotationsVisible && ready)
+                  Container(
+                    width: 320,
+                    decoration: BoxDecoration(
+                        border: Border(
+                            left: BorderSide(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant))),
+                    child: SafeArea(
+                        child: _annotationPanel(
+                            onClose: () =>
+                                setState(() => _annotationsVisible = false))),
+                  ),
               ]),
             )));
+  }
+
+  Widget _annotationPanel(
+          {required VoidCallback onClose, bool sheet = false}) =>
+      AnnotationsPanel(
+        annotations: _anns,
+        documentTitle: widget.doc.data['title'] as String? ?? 'Document',
+        onClose: onClose,
+        onGoTo: (ann) {
+          if (sheet) Navigator.pop(context);
+          _goToPage(ann.page);
+        },
+        onEdit: (ann) => _noteDialog(existing: ann, page: ann.page),
+        onDelete: _remove,
+      );
+
+  void _showAnnotations(bool expanded) {
+    if (expanded) {
+      setState(() => _annotationsVisible = !_annotationsVisible);
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => FractionallySizedBox(
+          heightFactor: .85,
+          child:
+              _annotationPanel(sheet: true, onClose: () => Navigator.pop(ctx))),
+    );
   }
 
   /// "3 / 12 · 86%": tap the page part to jump to a page, the zoom part for
   /// zoom presets.
   Widget _statusPill() {
     final scheme = Theme.of(context).colorScheme;
-    final total = _document?.pages.length ?? (widget.doc.data['pageCount'] as int? ?? 0);
-    final style = TextStyle(color: scheme.onInverseSurface, fontSize: 13, fontWeight: FontWeight.w600);
+    final total =
+        _document?.pages.length ?? (widget.doc.data['pageCount'] as int? ?? 0);
+    final style = TextStyle(
+        color: scheme.onSurface, fontSize: 13, fontWeight: FontWeight.w600);
     return Material(
-      color: scheme.inverseSurface.withValues(alpha: 0.85),
-      shape: const StadiumBorder(),
+      color: scheme.surfaceContainerHighest,
+      shape: AppTheme.square,
       clipBehavior: Clip.antiAlias,
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         InkWell(
@@ -637,11 +777,14 @@ class _ReaderPageState extends State<ReaderPage> {
             ),
           ),
         ),
-        Container(width: 1, height: 16, color: scheme.onInverseSurface.withValues(alpha: 0.3)),
+        Container(width: 1, height: 16, color: scheme.outline),
         PopupMenuButton<_ZoomPreset>(
           tooltip: 'Zoom',
           onSelected: _applyZoom,
-          itemBuilder: (_) => [for (final z in _ZoomPreset.all) PopupMenuItem(value: z, child: Text(z.label))],
+          itemBuilder: (_) => [
+            for (final z in _ZoomPreset.all)
+              PopupMenuItem(value: z, child: Text(z.label))
+          ],
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 6, 14, 6),
             child: ValueListenableBuilder<int>(
@@ -673,7 +816,9 @@ class _ReaderPageState extends State<ReaderPage> {
             onSubmitted: (_) => submit(),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
             FilledButton(onPressed: submit, child: const Text('Go')),
           ],
         );
@@ -685,7 +830,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   /// Tooltip with the keyboard shortcut appended on desktop.
   String _tip(String label, String keys) => kDesktop ? '$label ($keys)' : label;
-  String get _cmdLabel => defaultTargetPlatform == TargetPlatform.macOS ? '⌘' : 'Ctrl+';
+  String get _cmdLabel =>
+      defaultTargetPlatform == TargetPlatform.macOS ? '⌘' : 'Ctrl+';
 
   Widget _swatch(Color c, {double size = 28, bool? selected}) {
     final scheme = Theme.of(context).colorScheme;
@@ -695,59 +841,82 @@ class _ReaderPageState extends State<ReaderPage> {
       height: size,
       decoration: BoxDecoration(
         color: c,
-        shape: BoxShape.circle,
+        shape: BoxShape.rectangle,
         // A visible outline even for the dark swatch on a dark toolbar.
-        border: Border.all(width: selected ? 3 : 1.5, color: selected ? scheme.primary : scheme.outline),
+        border: Border.all(
+            width: selected ? 3 : 1.5,
+            color: selected ? scheme.primary : scheme.outline),
       ),
     );
   }
 
-  Widget _toolbar() {
+  Widget _toolbar({bool expanded = false}) {
     final scheme = Theme.of(context).colorScheme;
     Widget toolBtn(Tool t, IconData icon, String tip, String key) => IconButton(
           tooltip: _tip(tip, key),
           isSelected: _tool == t,
           icon: Icon(icon),
-          style: IconButton.styleFrom(backgroundColor: _tool == t ? scheme.primaryContainer : null),
+          style: IconButton.styleFrom(
+              backgroundColor: _tool == t ? scheme.primaryContainer : null),
           onPressed: () => _setTool(t),
         );
     final tools = [
       toolBtn(Tool.pan, Icons.pan_tool_outlined, 'Navigate', 'V'),
       toolBtn(Tool.highlight, Icons.highlight, 'Highlight – drag a box', 'H'),
       toolBtn(Tool.ink, Icons.draw_outlined, 'Pen', 'P'),
-      toolBtn(Tool.note, Icons.sticky_note_2_outlined, kDesktop ? 'Note – click' : 'Note – tap', 'N'),
+      toolBtn(Tool.note, Icons.sticky_note_2_outlined,
+          kDesktop ? 'Note – click' : 'Note – tap', 'N'),
       toolBtn(Tool.eraser, Icons.auto_fix_normal_outlined, 'Eraser', 'E'),
     ];
     return SafeArea(
+      top: false,
+      bottom: !expanded,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: LayoutBuilder(builder: (context, c) {
           // 5 tools (48 each) + 5 swatches (34 each) need ~420 dp. On narrower
           // screens (phones in portrait) the colours collapse into one button.
-          final wide = c.maxWidth >= 440;
-          return Row(children: [
-            ...tools,
-            const Spacer(),
-            if (wide)
-              for (final col in palette)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: InkResponse(
-                    onTap: () => setState(() => _color = col),
-                    radius: 20,
-                    child: _swatch(col),
-                  ),
-                )
-            else
-              PopupMenuButton<Color>(
-                tooltip: 'Colour',
-                onSelected: (col) => setState(() => _color = col),
-                itemBuilder: (_) => [
-                  for (final col in palette) PopupMenuItem(value: col, child: Center(child: _swatch(col, size: 32))),
-                ],
-                child: Padding(padding: const EdgeInsets.all(8), child: _swatch(_color)),
-              ),
-          ]);
+          final wide = c.maxWidth >= 600;
+          return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                  width: c.maxWidth < 300 ? 300 : c.maxWidth,
+                  child: Row(children: [
+                    ...tools,
+                    const Spacer(),
+                    if (wide)
+                      for (final col in palette)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: InkResponse(
+                            onTap: () => setState(() => _color = col),
+                            radius: 20,
+                            child: Semantics(
+                                label:
+                                    'Annotation color ${palette.indexOf(col) + 1}',
+                                button: true,
+                                selected: _color == col,
+                                child: SizedBox(
+                                    width: 42,
+                                    height: 48,
+                                    child: Center(child: _swatch(col)))),
+                          ),
+                        )
+                    else
+                      PopupMenuButton<Color>(
+                        tooltip: 'Colour',
+                        onSelected: (col) => setState(() => _color = col),
+                        itemBuilder: (_) => [
+                          for (final col in palette)
+                            PopupMenuItem(
+                                value: col,
+                                child: Center(child: _swatch(col, size: 32))),
+                        ],
+                        child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: _swatch(_color)),
+                      ),
+                  ])));
         }),
       ),
     );
@@ -755,8 +924,10 @@ class _ReaderPageState extends State<ReaderPage> {
 }
 
 class SyncIndicator extends StatelessWidget {
-  const SyncIndicator({super.key, required this.engine});
+  const SyncIndicator(
+      {super.key, required this.engine, this.showLabel = false});
   final SyncEngine engine;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -766,10 +937,49 @@ class SyncIndicator extends StatelessWidget {
         final (icon, tip) = switch (engine.status) {
           SyncStatus.idle => (Icons.cloud_done_outlined, 'Synced'),
           SyncStatus.syncing => (Icons.cloud_sync_outlined, 'Syncing…'),
-          SyncStatus.offline => (Icons.cloud_off_outlined, 'Offline – changes are saved and will sync'),
-          SyncStatus.error => (Icons.error_outline, engine.lastError ?? 'Sync error'),
+          SyncStatus.offline => (
+              Icons.cloud_off_outlined,
+              'Offline – changes are saved and will sync'
+            ),
+          SyncStatus.error => (
+              Icons.error_outline,
+              engine.lastError ?? 'Sync error'
+            ),
         };
-        return IconButton(icon: Icon(icon), tooltip: tip, onPressed: engine.syncNow);
+        final scheme = Theme.of(context).colorScheme;
+        final color = engine.status == SyncStatus.error
+            ? scheme.error
+            : engine.status == SyncStatus.offline
+                ? scheme.tertiary
+                : scheme.onSurfaceVariant;
+        if (!showLabel) {
+          return IconButton(
+              icon: Icon(icon, color: color),
+              tooltip: tip,
+              onPressed: engine.syncNow);
+        }
+        return Tooltip(
+            message: tip,
+            child: InkWell(
+                onTap: engine.syncNow,
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(icon, size: 16, color: color),
+                      const SizedBox(width: 6),
+                      Flexible(
+                          child: Text(
+                              switch (engine.status) {
+                                SyncStatus.idle =>
+                                  engine.lastSynced == null ? 'Sync' : 'Synced',
+                                SyncStatus.syncing => 'Syncing…',
+                                SyncStatus.offline => 'Offline',
+                                SyncStatus.error => 'Sync error'
+                              },
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11, color: color))),
+                    ]))));
       },
     );
   }
@@ -800,7 +1010,8 @@ class _ZoomPreset {
 /// Scrollbar thumb on the right edge that shows the current page number and
 /// can be dragged to scroll through the document.
 class _PageThumb extends StatefulWidget {
-  const _PageThumb({required this.controller, required this.top, required this.bottom});
+  const _PageThumb(
+      {required this.controller, required this.top, required this.bottom});
   final PdfViewerController controller;
   final double top;
   final double bottom;
@@ -865,16 +1076,22 @@ class _PageThumbState extends State<_PageThumb> {
     if (docH <= view.height) return null;
     final minY = hasMargin ? -margin.top : 0.0;
     final range = docH - view.height;
-    return (fraction: ((view.top - minY) / range).clamp(0.0, 1.0), minY: minY, range: range);
+    return (
+      fraction: ((view.top - minY) / range).clamp(0.0, 1.0),
+      minY: minY,
+      range: range
+    );
   }
 
   void _dragTo(double localY, double track) {
     final m = _metrics();
     if (m == null) return;
     final c = widget.controller;
-    final f = ((localY - widget.top - _size.height / 2) / track).clamp(0.0, 1.0);
+    final f =
+        ((localY - widget.top - _size.height / 2) / track).clamp(0.0, 1.0);
     final view = c.visibleRect;
-    final target = Offset(view.center.dx, m.minY + f * m.range + view.height / 2);
+    final target =
+        Offset(view.center.dx, m.minY + f * m.range + view.height / 2);
     c.goTo(c.calcMatrixFor(target), duration: Duration.zero);
   }
 
@@ -884,7 +1101,8 @@ class _PageThumbState extends State<_PageThumb> {
     if (m == null) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (context, box) {
-      final track = (box.maxHeight - widget.top - widget.bottom - _size.height).clamp(0.0, double.infinity);
+      final track = (box.maxHeight - widget.top - widget.bottom - _size.height)
+          .clamp(0.0, double.infinity);
       final y = widget.top + m.fraction * track;
       return Stack(children: [
         Positioned(
@@ -906,7 +1124,8 @@ class _PageThumbState extends State<_PageThumb> {
                   _hideTimer?.cancel();
                 }),
                 onVerticalDragUpdate: (d) {
-                  final local = (context.findRenderObject() as RenderBox).globalToLocal(d.globalPosition);
+                  final local = (context.findRenderObject() as RenderBox)
+                      .globalToLocal(d.globalPosition);
                   _dragTo(local.dy, track);
                 },
                 onVerticalDragEnd: (_) {
@@ -916,13 +1135,17 @@ class _PageThumbState extends State<_PageThumb> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    color: (_dragging ? scheme.primary : scheme.inverseSurface).withValues(alpha: 0.85),
-                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
+                    color: (_dragging ? scheme.primary : scheme.inverseSurface)
+                        .withValues(alpha: 0.85),
+                    borderRadius: const BorderRadius.horizontal(
+                        left: Radius.circular(15)),
                   ),
                   alignment: Alignment.center,
                   child: Text('${widget.controller.pageNumber ?? ''}',
                       style: TextStyle(
-                        color: _dragging ? scheme.onPrimary : scheme.onInverseSurface,
+                        color: _dragging
+                            ? scheme.onPrimary
+                            : scheme.onInverseSurface,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       )),

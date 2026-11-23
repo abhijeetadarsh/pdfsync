@@ -1,7 +1,7 @@
 name: pdfsync
 description: Cross-platform PDF reader that syncs PDFs and annotations through a central server.
 publish_to: none
-version: 1.0.0+1
+version: 1.0.0+11
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -27,3 +27,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700

@@ -434,3 +434,43 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
 - Open: tablet not connected this session, so not re-tested there; landscape
   not checked (no UI change). Real sign-in with the user's account not done.
   Release builds still need a higher `+N` build number than what is installed.
+
+## 2026-11-24 – Approved UI implementation
+
+- Pulled `origin/main` with fast-forward from `6c95a76` to `e7e3378`, then created `feat/approved-ui-design`. Temporarily stashed and restored the pre-existing worklog changes; preserved all local prototype/context files. `ui-showcase.html` was excluded from the implementation.
+- Implemented the approved `ui-design-fixed.html` direction in Flutter: near-black/lavender theme, bundled JetBrains Mono (regular/bold with OFL license), square controls, matching light appearance and persistent Dark/Light/System preference in the account menu.
+- Rebuilt sign-in with the approved layout, server configuration, validation, password visibility, registration mode, loading/error feedback, and autofill.
+- Rebuilt the library with title search, filters derived from real saved pages, continue-reading, phone rows, tablet grid/list switching, desktop selection/detail, and existing import/rename/delete/account actions. Real sync status replaces the mock status; cached PDF covers stay local-only until the document is downloaded, preserving bandwidth behavior.
+- Restyled reader tools and annotation colors, placed tools at the top on expanded windows, and added a live annotations sheet/panel with type/text/page filtering, page navigation, note editing, deletion through undo history, actual ink previews, and Copy as Markdown. Kept existing PDF renderer cache/performance settings, annotation coordinates and input policy.
+- Added meaningful widget tests for sign-in/server validation, six library viewport sizes including landscape, filtering/search recovery, and live annotation navigation/export. `flutter analyze`: clean. Full `flutter test` suite: 14 passed, including the real two-device sync integration test with `/tmp/pdfsync-server`.
+- Built web release and Android profile APK using Flutter 3.50 and JDK17. APK: `client/build/app/outputs/flutter-apk/app-profile.apk`. Build emitted an existing `file_picker` Kotlin-plugin migration warning, but succeeded.
+- Verified Flutter web against an isolated local test server/account and actual generated PDFs: authentication, synced library, resume, PDF rendering, responsive annotations, and light appearance. Captures under `.impeccable/review/*-web-*.png` are browser evidence, not native screenshots. No JavaScript errors observed on the successful walkthrough.
+- Ran `scripts/install-android.sh`; no authorized devices were eligible. Phone `adea1d8a` is unauthorized, tablet `HA2891X3` is disconnected, and no emulator is installed. Native phone/tablet portrait/landscape, OS safe areas, gestures, stylus, and performance remain unverified.
+- Implementation direction and constraints: [Approved UI implementation](approved-ui-implementation.md). Actual system tokens: [DESIGN.md](../DESIGN.md) and `.impeccable/design.json`. Existing `PRODUCT.md` still contains earlier pre-approval wording; it was not rewritten as a side effect.
+- Independent Impeccable visual/source review in progress; final findings and any correction will be recorded below. No commit, push, or merge performed.
+- Independent review requested two material corrections: resize zoom/position ownership and compatibility with existing local-domain login addresses. Added `ResponsivePdfSizing`, which applies resize from the pre-resize layout snapshot once, preserving width-relative zoom and the page-relative anchor; removed the competing delayed transform. Login validation now matches the server's `@` requirement. Regression test confirms `reader@lan` reaches successful authentication.
+- Rebuilt the corrected web release; repeated real browser sign-in using `reader@lan`, PDF resume, desktop → phone → landscape → tablet → desktop resizing, and annotations-panel close/open. Tablet reader now shows complete document lines at 115%; desktop returns to 183% with the panel, 236% without it; saved page23 remains the reading anchor. No JavaScript errors. Re-ran analysis and the full14 tests successfully.
+- Impeccable verdict: **ship at the scope of the two scored fixes**; both resolved. This is not a whole-surface native certification. Documenter rechecked the completed system and recorded the sizing behavior in DESIGN.md. Native phone/tablet testing remains open as noted above.
+
+## 2026-11-24 – Tablet install and web launch
+
+- Tablet `HA2891X3` reconnected and authorized. Opened the running Flutter web release at `http://127.0.0.1:18767` using `xdg-open`; local HTTP returned200.
+- Initial profile install was refused because installed version3 exceeded local version1. Rebuilt profile with `--build-number=4`. Android then refused the debug signature: installed app uses the project release certificate.
+- Used the existing signing material in `~/.config/pdfsync-release/` to sign the profile APK without copying passwords or keys into the repository. Verified the certificate digest matches the installed APK. Installed with `scripts/install-android.sh client/build/app/outputs/flutter-apk/app-tablet-profile.apk`: Success; package reports versionCode4 and updated installation time. No uninstall or app-data clearing occurred.
+- Launched PDF Sync. Existing account, five documents, saved pages and annotation counts remain available. Captured and inspected native tablet library in portrait and landscape under `.impeccable/review/tablet-native-{portrait,landscape}.png`; no Flutter exception/overflow/fatal crash appeared in the inspected logcat window. Restored auto-rotation to its original enabled state.
+- This is installation/library smoke coverage, not a complete reader/stylus/performance test. Phone still unauthorized. Existing docs describing both test devices as debug-signed do not match this tablet's current release certificate; future tablet updates must use the same release certificate and a build number above4.
+
+## 2026-11-24 – Android launcher branding and phone install
+
+- Set Android launcher label to `PDF Sync` through `@string/app_name`; replaced Flutter launcher PNGs with the approved lavender PDF mark. Added adaptive foreground/background layers and Android13 monochrome support. Existing app identifier remains `io.pdfsync.pdfsync`.
+- Added reproducible `scripts/generate-android-icon.py` and `client/assets/branding/pdf-mark.svg`. Letter outlines come directly from bundled JetBrains Mono Bold under the existing OFL license. Native vector resources carry the foreground; legacy PNGs are rasterized from the SVG at all five densities. No image-generation service used.
+- Phone `adea1d8a` became authorized and user explicitly requested installation there. Its installed version was10/debug-signed; tablet was version4/release-signed. Bumped pubspec to `1.0.0+11` to support in-place updates on both.
+- Profile build succeeded with Flutter3.50/JDK17 (`--no-pub`; only version/resources changed). APK badging verifies versionCode11 and application-label `PDF Sync`. Validated all new XML and PNG density dimensions; inspected the generated icon.
+- Signed the tablet variant with the existing project release key, retaining the debug-signed artifact for the phone. Installed both with `scripts/install-android.sh` targeted through `ANDROID_SERIAL`. Both package managers report versionCode11; both installations succeeded without uninstalling or clearing app data.
+- Installer now supports `ANDROID_SERIAL`, propagates install failures, and terminates its prompt watcher after completion instead of leaving it running. `bash -n` passes.
+- Opened Android App info on both devices and inspected native captures showing the lavender PDF icon and `PDF Sync` name (`.impeccable/review/{phone,tablet}-native-app-icon.png`). Android applies each device's normal adaptive icon mask. Relaunched the app on both after checking.
+
+## 2026-11-24 – Commit and push preparation
+
+- User requested committing and pushing the approved implementation branch. Included Flutter UI, tests, bundled fonts/license, Android branding, targeted installer support, approved HTML reference, design tokens and implementation documentation. Excluded pre-existing unrelated context, screenshots, skill installations and rejected showcase files.
+- Confirmed staged whitespace checks, installer shell syntax, and generated Android resources; retained the earlier clean analysis/full14-test/build/device-install evidence. Private signing material and device captures are excluded.
