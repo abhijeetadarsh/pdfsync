@@ -1,0 +1,506 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-23T19:01:59.347797+00:00",
+  "title": "Design System: PDF Sync",
+  "extensions": {
+    "colorMeta": {
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Dark Primary",
+        "tonalRamp": [
+          "oklch(15% 0.0509 304.8)",
+          "oklch(26% 0.0882 304.8)",
+          "oklch(37% 0.1187 304.8)",
+          "oklch(48% 0.1187 304.8)",
+          "oklch(59% 0.1187 304.8)",
+          "oklch(70% 0.1187 304.8)",
+          "oklch(82% 0.0854 304.8)",
+          "oklch(95% 0.0237 304.8)"
+        ]
+      },
+      "dark-on-primary": {
+        "role": "primary",
+        "displayName": "Dark On Primary",
+        "tonalRamp": [
+          "oklch(15% 0.0087 284.2)",
+          "oklch(26% 0.0151 284.2)",
+          "oklch(37% 0.0204 284.2)",
+          "oklch(48% 0.0204 284.2)",
+          "oklch(59% 0.0204 284.2)",
+          "oklch(70% 0.0204 284.2)",
+          "oklch(82% 0.0147 284.2)",
+          "oklch(95% 0.0041 284.2)"
+        ]
+      },
+      "dark-primary-container": {
+        "role": "primary",
+        "displayName": "Dark Primary Container",
+        "tonalRamp": [
+          "oklch(15% 0.0137 282.0)",
+          "oklch(26% 0.0237 282.0)",
+          "oklch(37% 0.0319 282.0)",
+          "oklch(48% 0.0319 282.0)",
+          "oklch(59% 0.0319 282.0)",
+          "oklch(70% 0.0319 282.0)",
+          "oklch(82% 0.0230 282.0)",
+          "oklch(95% 0.0064 282.0)"
+        ]
+      },
+      "dark-on-primary-container": {
+        "role": "primary",
+        "displayName": "Dark On Primary Container",
+        "tonalRamp": [
+          "oklch(15% 0.0509 304.8)",
+          "oklch(26% 0.0882 304.8)",
+          "oklch(37% 0.1187 304.8)",
+          "oklch(48% 0.1187 304.8)",
+          "oklch(59% 0.1187 304.8)",
+          "oklch(70% 0.1187 304.8)",
+          "oklch(82% 0.0854 304.8)",
+          "oklch(95% 0.0237 304.8)"
+        ]
+      },
+      "dark-surface": {
+        "role": "neutral",
+        "displayName": "Dark Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0087 284.2)",
+          "oklch(26% 0.0151 284.2)",
+          "oklch(37% 0.0204 284.2)",
+          "oklch(48% 0.0204 284.2)",
+          "oklch(59% 0.0204 284.2)",
+          "oklch(70% 0.0204 284.2)",
+          "oklch(82% 0.0147 284.2)",
+          "oklch(95% 0.0041 284.2)"
+        ]
+      },
+      "dark-surface-container": {
+        "role": "neutral",
+        "displayName": "Dark Surface Container",
+        "tonalRamp": [
+          "oklch(15% 0.0109 284.1)",
+          "oklch(26% 0.0189 284.1)",
+          "oklch(37% 0.0254 284.1)",
+          "oklch(48% 0.0254 284.1)",
+          "oklch(59% 0.0254 284.1)",
+          "oklch(70% 0.0254 284.1)",
+          "oklch(82% 0.0183 284.1)",
+          "oklch(95% 0.0051 284.1)"
+        ]
+      },
+      "dark-surface-container-high": {
+        "role": "neutral",
+        "displayName": "Dark Surface Container High",
+        "tonalRamp": [
+          "oklch(15% 0.0130 283.9)",
+          "oklch(26% 0.0226 283.9)",
+          "oklch(37% 0.0304 283.9)",
+          "oklch(48% 0.0304 283.9)",
+          "oklch(59% 0.0304 283.9)",
+          "oklch(70% 0.0304 283.9)",
+          "oklch(82% 0.0219 283.9)",
+          "oklch(95% 0.0061 283.9)"
+        ]
+      },
+      "dark-surface-container-highest": {
+        "role": "neutral",
+        "displayName": "Dark Surface Container Highest",
+        "tonalRamp": [
+          "oklch(15% 0.0137 282.0)",
+          "oklch(26% 0.0237 282.0)",
+          "oklch(37% 0.0319 282.0)",
+          "oklch(48% 0.0319 282.0)",
+          "oklch(59% 0.0319 282.0)",
+          "oklch(70% 0.0319 282.0)",
+          "oklch(82% 0.0230 282.0)",
+          "oklch(95% 0.0064 282.0)"
+        ]
+      },
+      "dark-on-surface": {
+        "role": "neutral",
+        "displayName": "Dark On Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0182 272.3)",
+          "oklch(26% 0.0316 272.3)",
+          "oklch(37% 0.0426 272.3)",
+          "oklch(48% 0.0426 272.3)",
+          "oklch(59% 0.0426 272.3)",
+          "oklch(70% 0.0426 272.3)",
+          "oklch(82% 0.0306 272.3)",
+          "oklch(95% 0.0085 272.3)"
+        ]
+      },
+      "dark-on-surface-variant": {
+        "role": "neutral",
+        "displayName": "Dark On Surface Variant",
+        "tonalRamp": [
+          "oklch(15% 0.0170 273.9)",
+          "oklch(26% 0.0294 273.9)",
+          "oklch(37% 0.0396 273.9)",
+          "oklch(48% 0.0396 273.9)",
+          "oklch(59% 0.0396 273.9)",
+          "oklch(70% 0.0396 273.9)",
+          "oklch(82% 0.0285 273.9)",
+          "oklch(95% 0.0079 273.9)"
+        ]
+      },
+      "dark-outline": {
+        "role": "neutral",
+        "displayName": "Dark Outline",
+        "tonalRamp": [
+          "oklch(15% 0.0146 278.6)",
+          "oklch(26% 0.0253 278.6)",
+          "oklch(37% 0.0340 278.6)",
+          "oklch(48% 0.0340 278.6)",
+          "oklch(59% 0.0340 278.6)",
+          "oklch(70% 0.0340 278.6)",
+          "oklch(82% 0.0245 278.6)",
+          "oklch(95% 0.0068 278.6)"
+        ]
+      },
+      "dark-outline-variant": {
+        "role": "neutral",
+        "displayName": "Dark Outline Variant",
+        "tonalRamp": [
+          "oklch(15% 0.0137 282.0)",
+          "oklch(26% 0.0237 282.0)",
+          "oklch(37% 0.0319 282.0)",
+          "oklch(48% 0.0319 282.0)",
+          "oklch(59% 0.0319 282.0)",
+          "oklch(70% 0.0319 282.0)",
+          "oklch(82% 0.0230 282.0)",
+          "oklch(95% 0.0064 282.0)"
+        ]
+      },
+      "dark-tertiary": {
+        "role": "tertiary",
+        "displayName": "Dark Tertiary",
+        "tonalRamp": [
+          "oklch(15% 0.0302 86.5)",
+          "oklch(26% 0.0523 86.5)",
+          "oklch(37% 0.0704 86.5)",
+          "oklch(48% 0.0704 86.5)",
+          "oklch(59% 0.0704 86.5)",
+          "oklch(70% 0.0704 86.5)",
+          "oklch(82% 0.0507 86.5)",
+          "oklch(95% 0.0141 86.5)"
+        ]
+      },
+      "light-primary": {
+        "role": "primary",
+        "displayName": "Light Primary",
+        "tonalRamp": [
+          "oklch(15% 0.0514 304.1)",
+          "oklch(26% 0.0891 304.1)",
+          "oklch(37% 0.1200 304.1)",
+          "oklch(48% 0.1200 304.1)",
+          "oklch(59% 0.1200 304.1)",
+          "oklch(70% 0.1200 304.1)",
+          "oklch(82% 0.0864 304.1)",
+          "oklch(95% 0.0240 304.1)"
+        ]
+      },
+      "light-on-primary": {
+        "role": "primary",
+        "displayName": "Light On Primary",
+        "tonalRamp": [
+          "oklch(15% 0.0000 89.9)",
+          "oklch(26% 0.0000 89.9)",
+          "oklch(37% 0.0000 89.9)",
+          "oklch(48% 0.0000 89.9)",
+          "oklch(59% 0.0000 89.9)",
+          "oklch(70% 0.0000 89.9)",
+          "oklch(82% 0.0000 89.9)",
+          "oklch(95% 0.0000 89.9)"
+        ]
+      },
+      "light-primary-container": {
+        "role": "primary",
+        "displayName": "Light Primary Container",
+        "tonalRamp": [
+          "oklch(15% 0.0149 308.0)",
+          "oklch(26% 0.0258 308.0)",
+          "oklch(37% 0.0347 308.0)",
+          "oklch(48% 0.0347 308.0)",
+          "oklch(59% 0.0347 308.0)",
+          "oklch(70% 0.0347 308.0)",
+          "oklch(82% 0.0250 308.0)",
+          "oklch(95% 0.0069 308.0)"
+        ]
+      },
+      "light-on-primary-container": {
+        "role": "primary",
+        "displayName": "Light On Primary Container",
+        "tonalRamp": [
+          "oklch(15% 0.0514 307.2)",
+          "oklch(26% 0.0891 307.2)",
+          "oklch(37% 0.1200 307.2)",
+          "oklch(48% 0.1200 307.2)",
+          "oklch(59% 0.1200 307.2)",
+          "oklch(70% 0.1200 307.2)",
+          "oklch(82% 0.0864 307.2)",
+          "oklch(95% 0.0240 307.2)"
+        ]
+      },
+      "light-surface": {
+        "role": "neutral",
+        "displayName": "Light Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0029 295.5)",
+          "oklch(26% 0.0050 295.5)",
+          "oklch(37% 0.0067 295.5)",
+          "oklch(48% 0.0067 295.5)",
+          "oklch(59% 0.0067 295.5)",
+          "oklch(70% 0.0067 295.5)",
+          "oklch(82% 0.0048 295.5)",
+          "oklch(95% 0.0013 295.5)"
+        ]
+      },
+      "light-surface-container": {
+        "role": "neutral",
+        "displayName": "Light Surface Container",
+        "tonalRamp": [
+          "oklch(15% 0.0053 301.3)",
+          "oklch(26% 0.0092 301.3)",
+          "oklch(37% 0.0124 301.3)",
+          "oklch(48% 0.0124 301.3)",
+          "oklch(59% 0.0124 301.3)",
+          "oklch(70% 0.0124 301.3)",
+          "oklch(82% 0.0089 301.3)",
+          "oklch(95% 0.0025 301.3)"
+        ]
+      },
+      "light-surface-container-high": {
+        "role": "neutral",
+        "displayName": "Light Surface Container High",
+        "tonalRamp": [
+          "oklch(15% 0.0072 304.8)",
+          "oklch(26% 0.0126 304.8)",
+          "oklch(37% 0.0169 304.8)",
+          "oklch(48% 0.0169 304.8)",
+          "oklch(59% 0.0169 304.8)",
+          "oklch(70% 0.0169 304.8)",
+          "oklch(82% 0.0122 304.8)",
+          "oklch(95% 0.0034 304.8)"
+        ]
+      },
+      "light-surface-container-highest": {
+        "role": "neutral",
+        "displayName": "Light Surface Container Highest",
+        "tonalRamp": [
+          "oklch(15% 0.0097 302.9)",
+          "oklch(26% 0.0168 302.9)",
+          "oklch(37% 0.0226 302.9)",
+          "oklch(48% 0.0226 302.9)",
+          "oklch(59% 0.0226 302.9)",
+          "oklch(70% 0.0226 302.9)",
+          "oklch(82% 0.0163 302.9)",
+          "oklch(95% 0.0045 302.9)"
+        ]
+      },
+      "light-on-surface": {
+        "role": "neutral",
+        "displayName": "Light On Surface",
+        "tonalRamp": [
+          "oklch(15% 0.0143 296.9)",
+          "oklch(26% 0.0248 296.9)",
+          "oklch(37% 0.0334 296.9)",
+          "oklch(48% 0.0334 296.9)",
+          "oklch(59% 0.0334 296.9)",
+          "oklch(70% 0.0334 296.9)",
+          "oklch(82% 0.0241 296.9)",
+          "oklch(95% 0.0067 296.9)"
+        ]
+      },
+      "light-on-surface-variant": {
+        "role": "neutral",
+        "displayName": "Light On Surface Variant",
+        "tonalRamp": [
+          "oklch(15% 0.0168 300.2)",
+          "oklch(26% 0.0291 300.2)",
+          "oklch(37% 0.0391 300.2)",
+          "oklch(48% 0.0391 300.2)",
+          "oklch(59% 0.0391 300.2)",
+          "oklch(70% 0.0391 300.2)",
+          "oklch(82% 0.0282 300.2)",
+          "oklch(95% 0.0078 300.2)"
+        ]
+      },
+      "light-outline": {
+        "role": "neutral",
+        "displayName": "Light Outline",
+        "tonalRamp": [
+          "oklch(15% 0.0156 305.0)",
+          "oklch(26% 0.0271 305.0)",
+          "oklch(37% 0.0365 305.0)",
+          "oklch(48% 0.0365 305.0)",
+          "oklch(59% 0.0365 305.0)",
+          "oklch(70% 0.0365 305.0)",
+          "oklch(82% 0.0263 305.0)",
+          "oklch(95% 0.0073 305.0)"
+        ]
+      },
+      "light-outline-variant": {
+        "role": "neutral",
+        "displayName": "Light Outline Variant",
+        "tonalRamp": [
+          "oklch(15% 0.0104 304.4)",
+          "oklch(26% 0.0181 304.4)",
+          "oklch(37% 0.0244 304.4)",
+          "oklch(48% 0.0244 304.4)",
+          "oklch(59% 0.0244 304.4)",
+          "oklch(70% 0.0244 304.4)",
+          "oklch(82% 0.0176 304.4)",
+          "oklch(95% 0.0049 304.4)"
+        ]
+      },
+      "light-tertiary": {
+        "role": "tertiary",
+        "displayName": "Light Tertiary",
+        "tonalRamp": [
+          "oklch(15% 0.0375 77.8)",
+          "oklch(26% 0.0651 77.8)",
+          "oklch(37% 0.0876 77.8)",
+          "oklch(48% 0.0876 77.8)",
+          "oklch(59% 0.0876 77.8)",
+          "oklch(70% 0.0876 77.8)",
+          "oklch(82% 0.0631 77.8)",
+          "oklch(95% 0.0175 77.8)"
+        ]
+      },
+      "annotation-green": {
+        "role": "neutral",
+        "displayName": "Annotation Green",
+        "tonalRamp": [
+          "oklch(15% 0.0468 142.7)",
+          "oklch(26% 0.0811 142.7)",
+          "oklch(37% 0.1092 142.7)",
+          "oklch(48% 0.1092 142.7)",
+          "oklch(59% 0.1092 142.7)",
+          "oklch(70% 0.1092 142.7)",
+          "oklch(82% 0.0786 142.7)",
+          "oklch(95% 0.0218 142.7)"
+        ]
+      },
+      "annotation-yellow": {
+        "role": "neutral",
+        "displayName": "Annotation Yellow",
+        "tonalRamp": [
+          "oklch(15% 0.0302 86.5)",
+          "oklch(26% 0.0523 86.5)",
+          "oklch(37% 0.0704 86.5)",
+          "oklch(48% 0.0704 86.5)",
+          "oklch(59% 0.0704 86.5)",
+          "oklch(70% 0.0704 86.5)",
+          "oklch(82% 0.0507 86.5)",
+          "oklch(95% 0.0141 86.5)"
+        ]
+      },
+      "annotation-blue": {
+        "role": "neutral",
+        "displayName": "Annotation Blue",
+        "tonalRamp": [
+          "oklch(15% 0.0414 228.7)",
+          "oklch(26% 0.0717 228.7)",
+          "oklch(37% 0.0965 228.7)",
+          "oklch(48% 0.0965 228.7)",
+          "oklch(59% 0.0965 228.7)",
+          "oklch(70% 0.0965 228.7)",
+          "oklch(82% 0.0695 228.7)",
+          "oklch(95% 0.0193 228.7)"
+        ]
+      },
+      "annotation-pink": {
+        "role": "neutral",
+        "displayName": "Annotation Pink",
+        "tonalRamp": [
+          "oklch(15% 0.0322 336.3)",
+          "oklch(26% 0.0558 336.3)",
+          "oklch(37% 0.0752 336.3)",
+          "oklch(48% 0.0752 336.3)",
+          "oklch(59% 0.0752 336.3)",
+          "oklch(70% 0.0752 336.3)",
+          "oklch(82% 0.0541 336.3)",
+          "oklch(95% 0.0150 336.3)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Login introduction."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Operational copy and metadata."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "reader-chrome",
+        "value": "220ms ease-out; 0ms with disableAnimations",
+        "purpose": "Slide reader bars without resizing PDF viewport."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "toolbar-packing",
+        "value": "600px"
+      },
+      {
+        "name": "library-expanded",
+        "value": "760px"
+      },
+      {
+        "name": "reader-expanded",
+        "value": "900px"
+      },
+      {
+        "name": "library-desktop",
+        "value": "1240px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Portable dark-theme visual preview of a Flutter filled action; native behavior remains in Material.",
+      "html": "<button class=\"action\">Add PDF</button>",
+      "css": ".action{font:700 13px \"JetBrains Mono\",monospace;background:#CBA6F7;color:#11111B;border:0;border-radius:0;min-width:48px;min-height:48px;padding:0 20px}.action:hover{box-shadow:inset 0 0 0 100px #11111b14}.action:focus-visible{outline:2px solid #CDD6F4;outline-offset:2px}.action:active{box-shadow:inset 0 0 0 100px #11111b26}"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Square filled search field with primary focus border.",
+      "html": "<input class=\"search\" aria-label=\"Search document titles\" placeholder=\"Search document titles\">",
+      "css": ".search{box-sizing:border-box;font:400 13px \"JetBrains Mono\",monospace;background:#181825;color:#CDD6F4;border:1px solid #313244;border-radius:0;padding:16px 14px;max-width:100%}.search::placeholder{color:#A6ADC8;font-size:12px}.search:hover{border-color:#585B70}.search:focus-visible{outline:none;border:2px solid #CBA6F7;padding:15px 13px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A precise personal reading workspace",
+    "overview": "A precise personal reading workspace, with a compact library and a paper-first reader. Near-black blue surfaces, lavender actions, muted blue text, square controls and bundled monospace type carry the approved ui-design-fixed.html direction into Flutter.\n\nThe interface supports personal reading and annotation across devices. Material controls retain their semantic, keyboard, focus, touch and platform behavior; the visual identity is applied through the shared theme rather than replacing those controls with decorative replicas.",
+    "keyCharacteristics": [
+      "Compact, task-led hierarchy",
+      "Dark and light appearances with shared square geometry",
+      "Bundled monospace UI and fine dividers",
+      "Real PDF pages and records rather than showcase fixtures"
+    ],
+    "rules": [],
+    "dos": [
+      "Do use the shared AppTheme semantic color roles in both appearances.",
+      "Do keep Material semantics, tooltips, keyboard shortcuts and input policy.",
+      "Do preserve real PDF rendering and local-first synchronization behavior.",
+      "Do use bundled JetBrains Mono for UI and keep document typography intact."
+    ],
+    "donts": [
+      "Don't use ui-showcase.html as a design reference.",
+      "Don't add rounded cards, gradients or decorative shadows to the approved square workspace.",
+      "Don't describe Flutter web captures as native device evidence.",
+      "Don't ship generated raster decoration or imply PDF-file annotation export from Markdown copying."
+    ]
+  }
+}

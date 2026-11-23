@@ -24,11 +24,23 @@ tap_prompt() { # serial
     sleep 1
   done
 }
-for d in $(adb devices | awk 'NR>1 && $2=="device" {print $1}'); do
+# ANDROID_SERIAL targets one device when connected installs need different keys.
+install_devices=${ANDROID_SERIAL:-$(adb devices | awk 'NR>1 && $2=="device" {print $1}')}
+install_status=0
+for d in $install_devices; do
   adb -s "$d" install -r "$APK" > "/tmp/pdfsync-install-$d.log" 2>&1 &
   pid=$!
   tap_prompt "$d" &
-  wait $pid && echo "$d: $(tail -1 "/tmp/pdfsync-install-$d.log")"
-  adb -s "$d" reverse tcp:8080 tcp:8080 >/dev/null
-  adb -s "$d" shell monkey -p $PKG -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  prompt_pid=$!
+  if wait "$pid"; then
+    echo "$d: $(tail -1 "/tmp/pdfsync-install-$d.log")"
+    adb -s "$d" reverse tcp:8080 tcp:8080 >/dev/null
+    adb -s "$d" shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+  else
+    cat "/tmp/pdfsync-install-$d.log" >&2
+    install_status=1
+  fi
+  kill "$prompt_pid" 2>/dev/null || true
+  wait "$prompt_pid" 2>/dev/null || true
 done
+exit "$install_status"
