@@ -474,3 +474,87 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
 
 - User requested committing and pushing the approved implementation branch. Included Flutter UI, tests, bundled fonts/license, Android branding, targeted installer support, approved HTML reference, design tokens and implementation documentation. Excluded pre-existing unrelated context, screenshots, skill installations and rejected showcase files.
 - Confirmed staged whitespace checks, installer shell syntax, and generated Android resources; retained the earlier clean analysis/full14-test/build/device-install evidence. Private signing material and device captures are excluded.
+## 2026-11-24 – Issue #8: local PDF cache controls
+
+- Created `fix/issue-8` from local `main`. Switching required stashing the
+  pre-existing `docs/worklog.md` changes; they remain in the named stash
+  `Preserve worklog before branching for issue #8`. Untracked user files were
+  left in place. Local main was one commit behind origin/main.
+- Added an Available offline badge and filter to the library, a visible PDF
+  options button, and Remove from this device in the existing action sheet.
+  Cache removal keeps document metadata, annotations, and reading position.
+- SyncEngine exposes cache status, import caching, and guarded removal. Removal
+  requires the existing uploaded:<sha> server-copy marker, protecting imported
+  PDFs awaiting upload. Content hashes are deduplicated when checking status,
+  so entries sharing PDF bytes update together. Imports, downloads, removals,
+  and sync status changes refresh library availability.
+- Reopening an evicted PDF downloads it again. Unavailable downloads now explain
+  that a server connection is needed and offer Try again. Thumbnail widgets own
+  image clones so eviction can release shared rendered covers safely.
+- Verification: built a local Go server and ran all 21 Flutter tests, including
+  server-backed eviction/re-download, unsynced-copy protection, metadata and
+  annotation preservation, duplicate hashes, cache notifications, and download
+  failure behavior. Widget checks cover phone/tablet sizes in both orientations,
+  light theme and dark theme with 1.3 text scale. The initial landscape sheet
+  overflow was fixed with a scrollable sheet. Static analysis and the production
+  web build (including the Wasm dry run) pass.
+- Inspected rendered widget previews with real Roboto and Material icon fonts;
+  optional PNG captures are written to /tmp/pdfsync-cache-*.png using
+  PDFSYNC_CAPTURE_WIDGETS=1 and PDFSYNC_TEST_FONT_DIR pointing at Flutter's
+  bin/cache/artifacts/material_fonts directory. They use placeholder PDF bytes
+  and are widget previews, not device screenshots.
+- Open: adb reports no connected phone or tablet, so installation and actual
+  Android device checks could not be performed. Bulk clearing and cache storage
+  dashboards are outside this fix.
+
+## 2026-11-24 – Issue #8: connected tablet verification
+
+- Tested the native profile build on the connected Motorola tablet in portrait
+  and landscape, light/dark themes, and at 1.3× text scale. Verified shared-hash
+  offline badges/filter, actual file removal, annotation and page-2 preservation,
+  offline failure messaging, successful retry/re-download, and disabled removal
+  of a PDF imported before its upload. Removal enabled after successful sync.
+- Found an existing unhandled WebSocket readiness error when disconnecting the
+  local server. Added a failing regression test, consumed the readiness failure
+  (the stream listener still handles reconnect), and verified the fix with all
+  22 tests and static analysis. Rebuilt/reinstalled and repeated offline launch,
+  reconnect, removal, and SHA-256-verified re-download with no runtime errors.
+- Updated the tablet in place to version code 12 using the matching existing
+  release key after the default profile signature was rejected. Preserved user
+  data: the original account DB checksum and cached-file list are unchanged;
+  the original signed-out session and device display settings are restored.
+- Full setup, results, cleanup, and direct device screenshots:
+  [Cache controls tablet test](cache-controls-tablet-test.md). Phone hardware
+  remains untested because only the tablet was connected.
+
+## 2026-11-24 – Issue #8: update branch from latest main
+
+- Corrected the starting base: stashed the in-progress cache work, switched to
+  main, ran `git pull --ff-only origin main`, then fast-forwarded fix/issue-8 to
+  `02a15a4` (approved UI and Android branding, PR #14). Reapplied the cache work
+  and resolved library, reader, and worklog conflicts against the new UI.
+- Kept the approved theme, sidebar, list/grid layouts, details pane, reader
+  sizing, and annotation panel. Added Offline to the sidebar and Available
+  offline to compact filters, with counts, native cache indicators, guarded
+  local removal, and download retry. Sidebar navigation scrolls on short
+  displays; the short Offline label remains readable at larger text sizes.
+- Updated the cache widget tests to exercise the approved theme, list and grid
+  actions, filter scrolling, and the desktop details pane. Updated the existing
+  missing-blob test double to report `has == false` for availability queries.
+- All 25 tests and static analysis pass. The web build and native profile build
+  pass. Reinstalled version 13 on the tablet without clearing user data and
+  repeated download, shared-file removal, offline filtering, and page-2/note
+  preservation on the approved UI. See the follow-up in
+  [tablet verification](cache-controls-tablet-test.md).
+- Both named stashes remain available: the original user worklog stash and the
+  cache-work backup made before updating main. All current feature changes
+  remain uncommitted on fix/issue-8.
+
+## 2026-11-24 – Issue #8: commit and push
+
+- Prepared the cache controls, regression tests, tablet verification report, and
+  device screenshots for commit on fix/issue-8, based on main at 02a15a4.
+- Validation remains: 25 tests passing, clean static analysis, successful web
+  and Android profile builds, and native tablet verification. No source changes
+  were made after those checks. Unrelated local files and both backup stashes
+  are excluded from the commit.

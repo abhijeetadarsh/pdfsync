@@ -491,8 +491,22 @@ class _ReaderPageState extends State<ReaderPage> {
     );
     final body = _error != null
         ? Center(
-            child: Text('Could not open PDF:\n$_error',
-                textAlign: TextAlign.center))
+            child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('Could not open PDF:\n$_error', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _error = null;
+                      _progress = 0;
+                    });
+                    _load();
+                  },
+                  child: const Text('Try again')),
+            ]),
+          ))
         : _bytes == null
             ? Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
