@@ -11,16 +11,19 @@ Future<Database> openDb(String name) async {
 
 /// Content-addressed PDF cache on disk: `support/blobs/SHA256.pdf`
 class BlobCache {
+  BlobCache({this.namespace = 'blobs', this.extension = 'pdf'});
+  final String namespace;
+  final String extension;
   Directory? _dir;
 
   Future<Directory> _root() async {
     if (_dir != null) return _dir!;
     final base = await getApplicationSupportDirectory();
-    _dir = await Directory('${base.path}/blobs').create(recursive: true);
+    _dir = await Directory('${base.path}/$namespace').create(recursive: true);
     return _dir!;
   }
 
-  Future<File> _file(String sha) async => File('${(await _root()).path}/$sha.pdf');
+  Future<File> _file(String sha) async => File('${(await _root()).path}/$sha.$extension');
 
   Future<bool> has(String sha) async => (await _file(sha)).exists();
 

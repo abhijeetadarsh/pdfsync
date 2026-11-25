@@ -9,6 +9,7 @@ import 'api_client.dart';
 import 'local_store.dart';
 import 'platform/db_io.dart' if (dart.library.js_interop) 'platform/db_web.dart' as platform;
 import 'record.dart';
+import 'thumbnails.dart';
 
 class PdfDownloadException implements Exception {
   @override
@@ -28,7 +29,9 @@ enum SyncStatus { idle, syncing, offline, error }
 ///  * metadata: only records changed since our cursor (delta), batched, both ways in one round trip
 ///  * PDFs: content-addressed by SHA-256, uploaded once (HEAD check first), downloaded lazily on open
 class SyncEngine extends ChangeNotifier {
-  SyncEngine(this.store, this.api, {platform.BlobCache? blobs}) : blobs = blobs ?? platform.BlobCache() {
+  SyncEngine(this.store, this.api, {platform.BlobCache? blobs, ThumbnailService? thumbnails})
+      : blobs = blobs ?? platform.BlobCache() {
+    this.thumbnails = thumbnails ?? ThumbnailService(store, api, this.blobs);
     api.deviceId = store.nodeId;
     store.onLocalChange = _schedule;
   }
@@ -36,6 +39,7 @@ class SyncEngine extends ChangeNotifier {
   final LocalStore store;
   final ApiClient api;
   final platform.BlobCache blobs;
+  late final ThumbnailService thumbnails;
 
   SyncStatus status = SyncStatus.idle;
   String? lastError;
@@ -60,6 +64,7 @@ class SyncEngine extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    thumbnails.dispose();
     _debounce?.cancel();
     _periodic?.cancel();
     _wsRetry?.cancel();
@@ -95,6 +100,8 @@ class SyncEngine extends ChangeNotifier {
         _again = false;
         await _syncOnce();
       } while (_again && !_disposed);
+      thumbnails.retryMissing();
+      unawaited(thumbnails.uploadPending());
       lastSynced = DateTime.now();
       _set(SyncStatus.idle);
     } on ApiException catch (e) {
@@ -123,8 +130,10 @@ class SyncEngine extends ChangeNotifier {
       final res = await api.sync(cursor, toSend);
       store.hlc.observeServerTime(res.serverTime);
 
-      final retry =
-          res.rejected.where((r) => r['reason'] == 'blob not uploaded').map((r) => '${r['kind']}/${r['id']}').toSet();
+      final retry = res.rejected
+          .where((r) => r['reason'] == 'blob not uploaded')
+          .map((r) => '${r['kind']}/${r['id']}')
+          .toSet();
       for (final r in res.rejected) {
         debugPrint('pdfsync: server rejected ${r['kind']}/${r['id']}: ${r['reason']}');
       }
@@ -160,6 +169,7 @@ class SyncEngine extends ChangeNotifier {
 
   Future<void> cachePdf(String sha, Uint8List bytes) async {
     await blobs.put(sha, bytes);
+    thumbnails.retryMissing(sha);
     if (!_disposed) notifyListeners();
   }
 
@@ -178,7 +188,10 @@ class SyncEngine extends ChangeNotifier {
   /// PDF bytes for a document: local cache first, otherwise download once.
   Future<Uint8List> loadPdf(String sha, {void Function(double)? onProgress}) async {
     final cached = await blobs.get(sha);
-    if (cached != null) return cached;
+    if (cached != null) {
+      unawaited(thumbnails.prepare(sha));
+      return cached;
+    }
     final Uint8List bytes;
     try {
       bytes = await api.getBlob(sha, onProgress: (got, total) {
@@ -189,7 +202,10 @@ class SyncEngine extends ChangeNotifier {
     }
     await blobs.put(sha, bytes);
     await store.setMeta('uploaded:$sha', true); // server has it, obviously
-    if (!_disposed) notifyListeners();
+    if (!_disposed) {
+      notifyListeners();
+      unawaited(thumbnails.prepare(sha));
+    }
     return bytes;
   }
 
@@ -207,6 +223,11 @@ class SyncEngine extends ChangeNotifier {
       _wsSub = ch.stream.listen((msg) async {
         _wsAttempt = 0;
         final m = jsonDecode(msg as String) as Map<String, dynamic>;
+        if (m['type'] == 'thumbnail') {
+          thumbnails.retryMissing(m['sha256'] as String?);
+          if (!_disposed) notifyListeners();
+          return;
+        }
         final serverCursor = m['cursor'] as int? ?? 0;
         if (serverCursor > await store.cursor) syncNow();
       }, onDone: _reconnectLater, onError: (_) => _reconnectLater(), cancelOnError: true);

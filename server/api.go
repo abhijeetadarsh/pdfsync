@@ -41,6 +41,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("HEAD /api/blobs/{sha}", s.auth(http.HandlerFunc(s.handleBlobHead)))
 	mux.Handle("GET /api/blobs/{sha}", s.auth(http.HandlerFunc(s.handleBlobGet)))
 	mux.Handle("PUT /api/blobs/{sha}", s.auth(http.HandlerFunc(s.handleBlobPut)))
+	mux.Handle("GET /api/thumbnails/{sha}", s.auth(http.HandlerFunc(s.handleThumbnail)))
+	mux.Handle("PUT /api/thumbnails/{sha}", s.auth(http.HandlerFunc(s.handleThumbnail)))
 	mux.Handle("POST /api/sync", s.auth(http.HandlerFunc(s.handleSync)))
 	mux.Handle("GET /api/ws", s.auth(http.HandlerFunc(s.handleWS)))
 	return s.cors(mux)
@@ -295,6 +297,7 @@ func (s *Server) gcLoop(ctx context.Context) {
 			}
 			for _, sha := range shas {
 				os.Remove(s.blobPath(sha))
+				os.Remove(s.thumbnailPath(sha))
 			}
 			if len(shas) > 0 {
 				log.Printf("gc: removed %d unreferenced blobs", len(shas))

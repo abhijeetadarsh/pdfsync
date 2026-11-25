@@ -46,7 +46,9 @@ class ApiClient {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}));
     final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) throw ApiException(res.statusCode, body['error'] as String? ?? 'error');
+    if (res.statusCode != 200) {
+      throw ApiException(res.statusCode, body['error'] as String? ?? 'error');
+    }
     token = body['token'] as String;
     return body;
   }
@@ -68,20 +70,43 @@ class ApiClient {
   Future<void> putBlob(String sha, Uint8List bytes) async {
     final res = await _http.put(_u('/api/blobs/$sha'),
         headers: {..._headers, 'Content-Type': 'application/pdf'}, body: bytes);
-    if (res.statusCode != 200 && res.statusCode != 201) throw ApiException(res.statusCode, res.body);
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw ApiException(res.statusCode, res.body);
+    }
   }
 
   /// Streams the download so the UI can show progress for big PDFs.
   Future<Uint8List> getBlob(String sha, {void Function(int received, int? total)? onProgress}) async {
     final req = http.Request('GET', _u('/api/blobs/$sha'))..headers.addAll(_headers);
     final res = await _http.send(req);
-    if (res.statusCode != 200) throw ApiException(res.statusCode, 'download failed');
+    if (res.statusCode != 200) {
+      throw ApiException(res.statusCode, 'download failed');
+    }
     final out = BytesBuilder(copy: false);
     await for (final chunk in res.stream) {
       out.add(chunk);
       onProgress?.call(out.length, res.contentLength);
     }
     return out.takeBytes();
+  }
+
+  Future<Uint8List?> getThumbnail(String sha) async {
+    final res =
+        await _http.get(_u('/api/thumbnails/$sha'), headers: _headers).timeout(const Duration(seconds: 15));
+    if (res.statusCode == 404) return null;
+    if (res.statusCode != 200) {
+      throw ApiException(res.statusCode, 'thumbnail download failed');
+    }
+    return res.bodyBytes;
+  }
+
+  Future<void> putThumbnail(String sha, Uint8List bytes) async {
+    final res = await _http
+        .put(_u('/api/thumbnails/$sha'), headers: {..._headers, 'Content-Type': 'image/png'}, body: bytes)
+        .timeout(const Duration(seconds: 15));
+    if (res.statusCode != 204) {
+      throw ApiException(res.statusCode, 'thumbnail upload failed');
+    }
   }
 
   Future<SyncResponse> sync(int cursor, List<SyncRecord> changes) async {

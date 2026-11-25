@@ -558,3 +558,21 @@ Details: [performance.md § Scroll feel](performance.md#scroll-feel-2026-11-21).
   and Android profile builds, and native tablet verification. No source changes
   were made after those checks. Unrelated local files and both backup stashes
   are excluded from the commit.
+
+## 2026-11-25 – Issue #11: independent client-generated thumbnails
+
+- Added authenticated, ownership-checked PNG thumbnail storage and download,
+  validation, blob-GC cleanup, and WebSocket readiness notifications. No PDF
+  renderer or new dependency was added to the server.
+- Import renders from the already-open PDF; visible library covers fetch/cache
+  previews separately, deduplicate and limit work, and throttle missing images.
+  Cached/opened PDFs repair missing previews. Optional uploads retry without
+  blocking document/annotation sync. PDF downloads remain lazy on open;
+  annotation sync retains its existing behavior.
+- Go race tests pass; all 34 Flutter tests pass; analysis is clean; web and
+  Android profile builds pass. Native verification on the connected CPH2661
+  confirms zero PDF downloads during login/scrolling, import uploads, missing
+  preview repair, late preview notifications, offline retention, and preserved
+  annotations after PDF eviction/re-download.
+- Restored the original phone session/files and settings after isolated tests.
+  Detailed evidence: [Issue #11 phone verification](issue-11-phone-test.md).

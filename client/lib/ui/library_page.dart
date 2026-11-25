@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'dart:ui' as ui;
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/rendering.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -9,6 +10,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../annotations.dart';
 import '../sync/record.dart';
 import '../sync/sync_engine.dart';
+import '../sync/thumbnails.dart';
 import 'reader_page.dart';
 import 'app_theme.dart';
 
@@ -77,8 +79,19 @@ class _LibraryPageState extends State<LibraryPage> {
       int pages = 0;
       try {
         final doc = await PdfDocument.openData(bytes);
-        pages = doc.pages.length;
-        await doc.dispose();
+        try {
+          pages = doc.pages.length;
+          try {
+            final thumbnail = await renderDocumentThumbnail(doc);
+            if (thumbnail != null) {
+              await engine.thumbnails.saveGenerated(sha, thumbnail);
+            }
+          } catch (_) {
+            // Import still succeeds if the optional preview cannot be rendered.
+          }
+        } finally {
+          await doc.dispose();
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -160,7 +173,6 @@ class _LibraryPageState extends State<LibraryPage> {
     try {
       final sha = doc.data['sha256'] as String;
       await engine.removeCachedPdf(sha);
-      _CoverState.evict(sha);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content:
@@ -932,9 +944,7 @@ class _FilterButton extends StatelessWidget {
       );
 }
 
-/// First page of the PDF, rendered from the local blob cache. Documents not
-/// downloaded on this device yet (they download on first open) show a
-/// placeholder instead of pulling megabytes just for a thumbnail.
+/// Previews use their own cache; a cover never downloads the PDF itself.
 class _Cover extends StatefulWidget {
   const _Cover(
       {super.key,
@@ -950,101 +960,124 @@ class _Cover extends StatefulWidget {
 }
 
 class _CoverState extends State<_Cover> {
-  // Rendered covers, shared across rebuilds and scrolling (a library is small;
-  // each cover is ~360x500 px).
-  static final _cache = <String, ui.Image>{};
-
-  static void evict(String sha) => _cache.remove(sha)?.dispose();
-
-  ui.Image? _image;
-  bool _missing = false;
+  Uint8List? _bytes;
 
   @override
   void initState() {
     super.initState();
-    _reset();
+    widget.engine.addListener(_scheduleRefresh);
   }
 
   @override
   void didUpdateWidget(covariant _Cover oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.sha != widget.sha || oldWidget.cached != widget.cached) {
-      _reset();
+    if (oldWidget.engine != widget.engine) {
+      oldWidget.engine.removeListener(_scheduleRefresh);
+      widget.engine.addListener(_scheduleRefresh);
+    }
+    if (oldWidget.sha != widget.sha ||
+        oldWidget.cached != widget.cached ||
+        oldWidget.engine != widget.engine) {
+      _bytes = null;
+      _refresh();
     }
   }
 
-  void _reset() {
-    _image?.dispose();
-    _image = widget.cached ? _cache[widget.sha]?.clone() : null;
-    _missing = !widget.cached;
-    if (widget.cached && _image == null) _load();
+  ScrollPosition? _position;
+  bool _refreshScheduled = false;
+  bool _retry = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (_position != position) {
+      _position?.removeListener(_scheduleRefresh);
+      _position = position;
+      _position?.addListener(_scheduleRefresh);
+    }
+    _scheduleRefresh();
+  }
+
+  void _scheduleRefresh() {
+    if (!mounted || _refreshScheduled || _bytes != null) return;
+    if (_loading) {
+      _retry = true;
+      return;
+    }
+    _refreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshScheduled = false;
+      if (mounted) _refresh();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  bool get _visible {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return false;
+    final viewport = RenderAbstractViewport.maybeOf(box);
+    if (viewport is! RenderBox) return true;
+    final viewportBox = viewport as RenderBox;
+    final origin = box.localToGlobal(Offset.zero, ancestor: viewportBox);
+    return viewportBox.paintBounds.overlaps(origin & box.size);
+  }
+
+  bool _loading = false;
+  Future<void> _refresh() async {
+    if (_loading || _bytes != null || !_visible) return;
+    _loading = true;
+    final sha = widget.sha;
+    final engine = widget.engine;
+    try {
+      final bytes = await engine.thumbnails.load(sha);
+      if (mounted &&
+          widget.sha == sha &&
+          widget.engine == engine &&
+          bytes != null) {
+        setState(() => _bytes = bytes);
+      }
+    } catch (_) {
+      // Keep the placeholder; later sync/cache notifications allow a retry.
+    } finally {
+      _loading = false;
+      if (mounted && (_retry || widget.sha != sha || widget.engine != engine)) {
+        _retry = false;
+        _scheduleRefresh();
+      }
+    }
   }
 
   @override
   void dispose() {
-    _image?.dispose();
+    _position?.removeListener(_scheduleRefresh);
+    widget.engine.removeListener(_scheduleRefresh);
     super.dispose();
-  }
-
-  /// Renders the *top* of page 1 at the card's width. Very tall pages (web
-  /// exports) would otherwise shrink to a sliver; normal pages fill the card.
-  Future<void> _load() async {
-    final sha = widget.sha;
-    final bytes = await widget.engine.blobs.get(sha);
-    if (!mounted || widget.sha != sha) return;
-    if (bytes == null) {
-      if (mounted) setState(() => _missing = true);
-      return;
-    }
-    PdfDocument? doc;
-    try {
-      doc =
-          await PdfDocument.openData(bytes, sourceName: 'cover:${widget.sha}');
-      final page = doc.pages.first;
-      const w = 360;
-      final fullH = w * page.height / page.width;
-      final img = await page.renderForDisplay(
-        width: w,
-        height: fullH.clamp(1, w * 1.45).round(),
-        fullWidth: w.toDouble(),
-        fullHeight: fullH,
-        backgroundColor: 0xFFFFFFFF,
-      );
-      if (img == null) return;
-      if (!mounted || widget.sha != sha || !widget.cached) {
-        img.dispose();
-        return;
-      }
-      _cache.remove(sha)?.dispose();
-      _cache[sha] = img;
-      setState(() => _image = img.clone());
-    } catch (_) {
-      // Unreadable: keep the placeholder.
-    } finally {
-      await doc?.dispose();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final img = _image;
-    if (img != null) {
-      return Container(
-        color: Colors.white,
-        child: RawImage(
-            image: img, fit: BoxFit.cover, alignment: Alignment.topCenter),
-      );
-    }
+    final bytes = _bytes;
+    Widget placeholder() => Container(
+          color: scheme.surfaceContainerHigh,
+          alignment: Alignment.center,
+          child: Icon(
+              widget.cached
+                  ? Icons.picture_as_pdf_outlined
+                  : Icons.cloud_download_outlined,
+              size: 36,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+        );
+    if (bytes == null) return placeholder();
     return Container(
-      color: scheme.surfaceContainerHigh,
-      alignment: Alignment.center,
-      child: Icon(
-          _missing
-              ? Icons.cloud_download_outlined
-              : Icons.picture_as_pdf_outlined,
-          size: 36,
-          color: scheme.onSurfaceVariant.withValues(alpha: 0.6)),
+      color: Colors.white,
+      child: Image.memory(bytes,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          cacheWidth: 360,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => placeholder()),
     );
   }
 }

@@ -46,6 +46,15 @@ func (h *Hub) remove(userID string, c *client) {
 // Poke notifies all of a user's devices except the originator.
 func (h *Hub) Poke(userID, fromDevice string, cursor int64) {
 	msg, _ := json.Marshal(map[string]any{"type": "changed", "cursor": cursor})
+	h.broadcast(userID, fromDevice, msg)
+}
+
+func (h *Hub) ThumbnailReady(userID, fromDevice, sha string) {
+	msg, _ := json.Marshal(map[string]any{"type": "thumbnail", "sha256": sha})
+	h.broadcast(userID, fromDevice, msg)
+}
+
+func (h *Hub) broadcast(userID, fromDevice string, msg []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for c := range h.conns[userID] {
