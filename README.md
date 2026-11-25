@@ -65,8 +65,26 @@ cd server && go build -o /tmp/pdfsync-server . && cd ../client \
 |---|---|---|
 | POST | `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | `{email,password}` → `{userId, token}` |
 | HEAD/PUT/GET | `/api/blobs/{sha256}` | check / upload (hash-verified) / download (Range) |
+| GET/PUT | `/api/thumbnails/{sha256}` | download / upload a client-generated first-page PNG |
 | POST | `/api/sync` | `{cursor, changes[]}` → `{accepted, rejected, changes, cursor, hasMore, serverTime}` |
 | GET | `/api/ws?token=…&device=…` | `{"type":"changed","cursor":N}` pokes |
+
+Thumbnails are optional client-generated PNG previews stored separately from PDFs.
+Clients render page 1 during import and upload it after the PDF. Library items fetch
+previews only when visible and cache them independently, so a thumbnail does not
+mean the full PDF is available offline. Missing previews are repaired from a
+locally cached PDF or when the PDF is opened; library browsing never downloads a
+PDF just to generate its thumbnail. Metadata and annotations retain their existing
+background delta sync.
+
+`PUT /api/thumbnails/{sha256}` accepts a valid PNG up to 1 MiB and 512 × 768 pixels;
+clients currently render at 360 pixels wide, cropping very tall pages to the cover
+area. It returns 204 on success. `GET` returns `image/png`, or 404 when unavailable.
+Both endpoints require ownership of the corresponding PDF blob. Optional upload
+failures retry during ordinary sync without blocking documents or annotations.
+Connected clients receive a `thumbnail` WebSocket notification when a preview is
+uploaded; older clients can ignore it. Deploy the updated server before the client
+to enable shared previews. Older servers still allow local previews and normal sync.
 
 Record kinds: `document`, `annotation`, `readstate`, `folder` (reserved for folders in the UI).
 

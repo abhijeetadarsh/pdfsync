@@ -7,10 +7,13 @@ Future<Database> openDb(String name) => databaseFactoryWeb.openDatabase(name);
 
 /// Web: PDFs are kept in IndexedDB (via sembast) so the library works offline.
 class BlobCache {
+  BlobCache({this.namespace = 'blobs', this.extension = 'pdf'});
+  final String namespace;
+  final String extension;
   Database? _db;
   final _store = StoreRef<String, String>('blobs');
 
-  Future<Database> _open() async => _db ??= await databaseFactoryWeb.openDatabase('pdfsync_blobs');
+  Future<Database> _open() async => _db ??= await databaseFactoryWeb.openDatabase('pdfsync_$namespace');
 
   Future<bool> has(String sha) async => await _store.record(sha).exists(await _open());
 

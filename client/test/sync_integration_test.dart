@@ -3,6 +3,8 @@
 //   (cd ../server && go build -o /tmp/pdfsync-server .)
 // then: PDFSYNC_SERVER_BIN=/tmp/pdfsync-server flutter test test/sync_integration_test.dart
 import 'dart:io';
+import 'dart:convert';
+import 'package:pdfsync/sync/thumbnails.dart';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -139,4 +141,32 @@ void main() {
 
     phone.dispose();
   });
+  test('two devices transfer a thumbnail without downloading its PDF', () async {
+    final auth = await ApiClient(url).register('thumbnail@x.io', 'password123');
+    final laptop = await device(url, auth['token'] as String);
+    final phone = await device(url, auth['token'] as String);
+    final pdf = Uint8List.fromList('thumbnail test PDF'.codeUnits);
+    final sha = sha256.convert(pdf).toString();
+    final image = base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNocDjwHwAFRAKAb2WvNQAAAABJRU5ErkJggg==');
+    // Use an isolated preview cache as a second simulated device would.
+    final upload = ThumbnailService(laptop.store, laptop.api, laptop.blobs, cache: MemBlobCache());
+    final download = ThumbnailService(phone.store, phone.api, phone.blobs, cache: MemBlobCache());
+    await laptop.cachePdf(sha, pdf);
+    await laptop.store.put('document', 'preview-doc', {'title': 'Preview', 'sha256': sha}, docId: 'preview-doc');
+    await laptop.store.put('annotation', 'preview-note', {'page': 1, 'type': 'note'}, docId: 'preview-doc');
+    await laptop.syncNow();
+    await upload.saveGenerated(sha, image);
+    await upload.uploadPending();
+    expect(await laptop.store.getMeta<bool>('thumbnailUploaded:$sha'), isTrue);
+    await phone.syncNow();
+    expect(await phone.store.get('document', 'preview-doc'), isNotNull);
+    expect(await phone.store.get('annotation', 'preview-note'), isNotNull);
+    expect(await download.load(sha), image);
+    expect(await phone.blobs.has(sha), isFalse);
+    upload.dispose();
+    download.dispose();
+    laptop.dispose();
+    phone.dispose();
+  });
+
 }
