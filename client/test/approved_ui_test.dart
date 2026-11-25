@@ -18,6 +18,8 @@ import 'package:sembast/sembast_memory.dart';
 
 class _MissingBlobs extends BlobCache {
   @override
+  Future<bool> has(String sha) async => false;
+  @override
   Future<Uint8List?> get(String sha) async => null;
 }
 

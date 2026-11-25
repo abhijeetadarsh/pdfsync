@@ -10,6 +10,11 @@ import 'local_store.dart';
 import 'platform/db_io.dart' if (dart.library.js_interop) 'platform/db_web.dart' as platform;
 import 'record.dart';
 
+class PdfDownloadException implements Exception {
+  @override
+  String toString() => 'This PDF is not available offline. Connect to the server and try again.';
+}
+
 enum SyncStatus { idle, syncing, offline, error }
 
 /// Moves changes between the local store and the server.
@@ -118,10 +123,8 @@ class SyncEngine extends ChangeNotifier {
       final res = await api.sync(cursor, toSend);
       store.hlc.observeServerTime(res.serverTime);
 
-      final retry = res.rejected
-          .where((r) => r['reason'] == 'blob not uploaded')
-          .map((r) => '${r['kind']}/${r['id']}')
-          .toSet();
+      final retry =
+          res.rejected.where((r) => r['reason'] == 'blob not uploaded').map((r) => '${r['kind']}/${r['id']}').toSet();
       for (final r in res.rejected) {
         debugPrint('pdfsync: server rejected ${r['kind']}/${r['id']}: ${r['reason']}');
       }
@@ -148,15 +151,45 @@ class SyncEngine extends ChangeNotifier {
     return true;
   }
 
+  /// Cache state belongs to this device, keyed by content hash so duplicate
+  /// documents always report the same offline availability.
+  Future<Map<String, bool>> cachedPdfs(Iterable<String> hashes) async {
+    final entries = await Future.wait(hashes.toSet().map((sha) async => MapEntry(sha, await blobs.has(sha))));
+    return Map.fromEntries(entries);
+  }
+
+  Future<void> cachePdf(String sha, Uint8List bytes) async {
+    await blobs.put(sha, bytes);
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<bool> canRemoveCachedPdf(String sha) async => await store.getMeta<bool>('uploaded:$sha') == true;
+
+  /// Never discard an imported PDF's only copy while it awaits upload.
+  /// This removes no document, annotation, or reading-position records.
+  Future<void> removeCachedPdf(String sha) async {
+    if (!await canRemoveCachedPdf(sha)) {
+      throw StateError('Waiting for upload. Sync this PDF before removing it from this device.');
+    }
+    await blobs.remove(sha);
+    if (!_disposed) notifyListeners();
+  }
+
   /// PDF bytes for a document: local cache first, otherwise download once.
   Future<Uint8List> loadPdf(String sha, {void Function(double)? onProgress}) async {
     final cached = await blobs.get(sha);
     if (cached != null) return cached;
-    final bytes = await api.getBlob(sha, onProgress: (got, total) {
-      if (total != null && total > 0) onProgress?.call(got / total);
-    });
+    final Uint8List bytes;
+    try {
+      bytes = await api.getBlob(sha, onProgress: (got, total) {
+        if (total != null && total > 0) onProgress?.call(got / total);
+      });
+    } catch (_) {
+      throw PdfDownloadException();
+    }
     await blobs.put(sha, bytes);
     await store.setMeta('uploaded:$sha', true); // server has it, obviously
+    if (!_disposed) notifyListeners();
     return bytes;
   }
 
@@ -167,6 +200,10 @@ class SyncEngine extends ChangeNotifier {
     try {
       final ch = WebSocketChannel.connect(api.wsUri());
       _ws = ch;
+      // A failed handshake rejects ready as well as emitting a stream error.
+      // The stream listener below schedules reconnect; consume the companion
+      // Future error so going offline never creates an unhandled exception.
+      unawaited(ch.ready.catchError((Object _) {}));
       _wsSub = ch.stream.listen((msg) async {
         _wsAttempt = 0;
         final m = jsonDecode(msg as String) as Map<String, dynamic>;

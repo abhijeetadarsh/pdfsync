@@ -82,6 +82,9 @@ void main() {
     await laptop.blobs.put(sha, pdf);
     await laptop.store.put('document', 'doc1', {'title': 'Thesis', 'sha256': sha, 'size': pdf.length}, docId: 'doc1');
     await laptop.store.put('annotation', 'h1', {'page': 1, 'type': 'highlight', 'color': 0xFFFFEB3B, 'rects': [[0.1, 0.1, 0.3, 0.02]]}, docId: 'doc1');
+    // The only copy cannot be removed until its upload is confirmed.
+    await expectLater(laptop.removeCachedPdf(sha), throwsStateError);
+    expect(await laptop.blobs.has(sha), isTrue);
     await laptop.syncNow();
     expect(laptop.status, SyncStatus.idle, reason: laptop.lastError);
     expect(await laptop.store.dirty(), isEmpty);
@@ -91,6 +94,18 @@ void main() {
     expect((await phone.store.get('document', 'doc1'))!.data['title'], 'Thesis');
     expect((await phone.store.get('annotation', 'h1'))!.data['page'], 1);
     expect(await phone.loadPdf(sha), pdf);
+
+    // Eviction changes only this device's PDF bytes. Metadata and annotations
+    // remain, and reopening downloads the server copy again.
+    await phone.store.put('readstate', 'doc1', {'page': 2}, docId: 'doc1');
+    await phone.removeCachedPdf(sha);
+    expect(await phone.blobs.has(sha), isFalse);
+    expect(await laptop.blobs.has(sha), isTrue);
+    expect((await phone.store.get('document', 'doc1'))!.deleted, isFalse);
+    expect((await phone.store.get('annotation', 'h1'))!.deleted, isFalse);
+    expect((await phone.store.get('readstate', 'doc1'))!.data['page'], 2);
+    expect(await phone.loadPdf(sha), pdf);
+    expect(await phone.blobs.has(sha), isTrue);
 
     // --- realtime: phone listens on the WebSocket; laptop draws; phone gets it with no manual sync
     phone.start();
